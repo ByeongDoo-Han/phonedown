@@ -33,6 +33,8 @@ pnpm start
 
 서비스 역할 키와 OAuth 비밀 키는 앱 환경 변수에 넣지 않습니다. 앱에는 publishable key만 사용합니다.
 
+`supabase/config.toml`에는 로컬 개발용 Auth 기본값도 들어 있습니다. 전체 파일을 `supabase config push`로 원격에 적용하면 이메일 확인 같은 원격 설정이 바뀔 수 있으므로, 원격 설정은 변경할 항목만 지정해 적용합니다.
+
 ## 확인
 
 ```sh
