@@ -6,7 +6,7 @@ import { ActionButton } from '@/components/ActionButton';
 import { Screen } from '@/components/Screen';
 import { AppleSignInButton } from '@/features/auth/AppleSignInButton';
 import { useAuth } from '@/features/auth/AuthProvider';
-import { signInWithProvider } from '@/features/auth/socialSignIn';
+import { getAuthRedirectUrl, signInWithProvider } from '@/features/auth/socialSignIn';
 import { supabase } from '@/lib/supabase';
 import { tokens } from '@/theme/tokens';
 
@@ -32,7 +32,11 @@ export default function SignIn() {
         const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (error) throw error;
       } else {
-        const { data, error } = await supabase.auth.signUp({ email: email.trim(), password });
+        const { data, error } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+          options: { emailRedirectTo: getAuthRedirectUrl() },
+        });
         if (error) throw error;
         if (!data.session) setMessage('확인 메일을 보냈습니다. 메일에서 가입을 완료해 주세요.');
       }

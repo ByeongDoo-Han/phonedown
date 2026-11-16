@@ -6,9 +6,13 @@ import { supabase } from '@/lib/supabase';
 
 WebBrowser.maybeCompleteAuthSession();
 
+export function getAuthRedirectUrl() {
+  return makeRedirectUri({ scheme: 'offlinetime', path: 'auth/callback' });
+}
+
 export async function signInWithProvider(provider: 'google' | 'apple') {
   if (!supabase) throw new Error('Supabase 연결 설정이 필요합니다.');
-  const redirectTo = makeRedirectUri({ scheme: 'offlinetime', path: 'auth/callback' });
+  const redirectTo = getAuthRedirectUrl();
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider,
     options: { redirectTo, skipBrowserRedirect: Platform.OS !== 'web' },
