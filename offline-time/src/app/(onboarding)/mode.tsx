@@ -6,7 +6,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ActionButton } from '@/components/ActionButton';
 import { Screen } from '@/components/Screen';
 import { useAuth } from '@/features/auth/AuthProvider';
-import type { PrimaryMode } from '@/features/auth/useProfile';
+import type { PrimaryMode, Profile } from '@/features/auth/useProfile';
 import { supabase } from '@/lib/supabase';
 import { tokens } from '@/theme/tokens';
 
@@ -23,12 +23,13 @@ export default function ModeOnboarding() {
   const save = useMutation({
     mutationFn: async (mode: PrimaryMode) => {
       if (!supabase || !session) throw new Error('인증 정보가 없습니다.');
-      const { error } = await supabase.from('users').update({ primary_mode: mode, onboarded_at: new Date().toISOString() })
-        .eq('id', session.user.id).select('id').single();
+      const { data, error } = await supabase.from('users').update({ primary_mode: mode, onboarded_at: new Date().toISOString() })
+        .eq('id', session.user.id).select('primary_mode,onboarded_at').single();
       if (error) throw error;
+      return data as Profile;
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['profile', session?.user.id] });
+    onSuccess: (profile) => {
+      queryClient.setQueryData(['profile', session?.user.id], profile);
       router.replace('/(tabs)');
     },
   });
