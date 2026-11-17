@@ -394,6 +394,11 @@ inspector_port = 8083
 # The Deno major version to use.
 deno_version = 2
 
+# AdMob calls this callback server-to-server, so it carries no Supabase credentials.
+# The handler verifies the AdMob SSV signature itself before granting a reward.
+[functions.ad-reward-ssv]
+verify_jwt = false
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
