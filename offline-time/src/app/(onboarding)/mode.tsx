@@ -48,7 +48,7 @@ export default function ModeOnboarding() {
       <Text style={[styles.optionLabel, selected === value && styles.optionLabelSelected]}>{label}</Text>
     </Pressable>)}</View>
     <View style={styles.info}><Text style={styles.infoTitle}>수면 기록 안내</Text>
-      <Text style={styles.infoText}>충전 상태를 확인해 수면 시간을 기록할 수 있어요. 자동 기록은 다음 단계에서 설정합니다.</Text>
+      <Text style={styles.infoText}>수면은 충전 상태를 확인해 기록해요. 자기 전에 한 번, 아침에 한 번 누르면 서버가 정산합니다. 충전이 아니어도 기록할 수 있어요.</Text>
     </View>
     <View style={styles.spacer} />
     <ActionButton label="계속하기" disabled={!selected || save.isPending} onPress={() => { if (selected) save.mutate(selected); }} />

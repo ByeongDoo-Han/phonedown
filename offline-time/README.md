@@ -1,6 +1,6 @@
 # 오프라인 타임
 
-Expo SDK 58 모바일 앱과 Supabase 데이터베이스의 초기 구현입니다. 가입, 로그인, 주력 시간 선택, 수동 집중 기록 시작·종료, 최근 기록 조회, 유효한 집중 기록의 포인트 적립, 지난주 포인트 정산, 교환 신청·이력이 동작합니다. 포인트는 기본 적립(1시간 = 2P, 주 100P까지)과 광고 부스터(2배, 주 80P까지)·주간 보너스 상자로 나뉘며, 광고 보상은 AdMob SSV 콜백으로만 지급됩니다. 수면 자동 감지, 앱 내 광고 표시, 교환 상품 발송은 아직 동작하지 않습니다.
+Expo SDK 58 모바일 앱과 Supabase 데이터베이스의 초기 구현입니다. 가입, 로그인, 주력 시간 선택, 수동 집중·수면 기록 시작·종료, 최근 기록 조회, 유효한 기록의 포인트 적립, 지난주 포인트 정산, 교환 신청·이력이 동작합니다. 포인트는 기본 적립(1시간 = 2P, 주 100P까지)과 광고 부스터(2배, 주 80P까지)·주간 보너스 상자로 나뉘며, 광고 보상은 AdMob SSV 콜백으로만 지급됩니다. 수면은 충전 상태를 확인해 시작하고 아침에 한 번 눌러 정산하며, 충전 이벤트는 앱이 살아 있는 동안만 받습니다(백그라운드 자동 감지·Live Activity는 아직 없음). 교환 상품 발송은 아직 동작하지 않습니다.
 
 연결된 원격 `apptech` 프로젝트(`uhisjleftevizjfudeip`)는 PostgreSQL 17.11입니다. 초기 기획의 PostgreSQL 15 고정 조건은 2026-11-16 사용자 선택에 따라 이 프로젝트에서 PostgreSQL 17로 변경했습니다. `0001_init.sql`과 앱 복귀 URL 설정은 원격에 적용됐습니다.
 
@@ -52,7 +52,28 @@ Google 로그인은 Expo Go에서 복귀 URL을 테스트할 수 없습니다. i
 
 `0006_weekly_cap_split.sql`은 v0.2 최종 단가·상한입니다. 기본 적립을 1시간 2P(30분 = 1P)로 올리고, 주간 상한을 기본 100P + 광고 부스터 80P로 나눕니다. 기본 한도에 닿은 세션은 기록은 그대로 남고 0P · `weekly_cap_reached`로 적립되며, 부스터·주간 상자는 같은 주 `bonus` 합계가 80P를 넘지 않게 잘리고 초과분은 `weekly_booster_cap`으로 기록만 됩니다. 소액 교환 라인업(네이버페이 1,000원 1,400P, 메가커피 아메리카노 2,800P, 상품권 5,000원 7,000P)을 `active = false`로 씨앗만 넣어 두었습니다.
 
-`0005_ad_revenue_defense.sql`은 v0.2 수익·원가 방어 구조입니다. 기본 적립을 1시간 1P로 낮추고, 유효 세션마다 광고 1편에 세션 기본 적립과 같은 `bonus` 행을 한 번 더 넣어 2배로 만듭니다(`claim_ad_booster`, 하루 2회·세션당 1회). 정산이 끝난 주에는 `claim_weekly_box`로 20P 상자를 한 번 열 수 있고, 교환 비율은 1,000원 = 1,400P(1P ≈ 0.714원)입니다. `ad_reward_claims`가 SSV 거래 1건당 1행을 보장하고, `settle_week`/`settle_due_weeks`는 `bonus` 행도 함께 확정합니다. 광고 보상은 `ad-reward-ssv` Edge Function이 AdMob 서명을 검증한 뒤에만 지급되며, 앱은 포인트를 만들 수 없습니다. 앱에는 아직 `react-native-google-mobile-ads`가 없어 광고를 띄우지 못하고, 기본 적립만 지급됩니다.
+`0005_ad_revenue_defense.sql`은 v0.2 수익·원가 방어 구조입니다(단가·주간 상한은 0006으로 대체). 기본 적립을 1시간 1P로 낮추고, 유효 세션마다 광고 1편에 세션 기본 적립과 같은 `bonus` 행을 한 번 더 넣어 2배로 만듭니다(`claim_ad_booster`, 하루 2회·세션당 1회). 정산이 끝난 주에는 `claim_weekly_box`로 20P 상자를 한 번 열 수 있고, 교환 비율은 1,000원 = 1,400P(1P ≈ 0.714원)입니다. `ad_reward_claims`가 SSV 거래 1건당 1행을 보장하고, `settle_week`/`settle_due_weeks`는 `bonus` 행도 함께 확정합니다. 광고 보상은 `ad-reward-ssv` Edge Function이 AdMob 서명을 검증한 뒤에만 지급되며, 앱은 포인트를 만들 수 없습니다.
+
+## 수면 기록
+
+홈에서 모드를 `수면`으로 고르면 목표 취침·기상 시간(기본 23:00–07:00, 30분 간격 프리셋)과 충전 상태가 보이고, 한 번 누르면 수면 기록이 열립니다. 아침에 `일어났어요 · 정산하기`를 한 번 누르면 서버가 종료·적립을 한 트랜잭션으로 처리합니다. 수면 중에는 홈 카드에 경과 시간과 충전 안내가 표시됩니다.
+
+- **규칙**: 40분부터 유효, 세션은 12시간에서 자릅니다(넘으면 `truncated`로 알림), KST 하루 수면 10시간까지 적립합니다. 시간당 2P·10분 절사라 7시간 30분 = 15P입니다.
+- **충전 상태**: `expo-battery`로 앱이 살아 있는 동안만 상태를 읽어 `sessions.started_charging`·`ended_charging`에 근거로 남깁니다. 충전은 적립 조건이 아니고 권한도 요구하지 않습니다. iOS 시뮬레이터·웹에서는 상태를 알 수 없어 안내만 달라집니다.
+- **목표 시간**: `users.sleep_bedtime`·`users.sleep_waketime`(KST 벽시계)에 저장하고, 홈은 밤 시간(취침~기상)에 수면 카드를 먼저 보여 줍니다. 목표는 안내용이고 적립은 실제 기록 시간으로 계산합니다.
+- **주간 상한**: 기본 100P는 수면·집중 **합산**으로 계산합니다. 수면만으로 100P를 채우면 그 뒤 수면도 0P · `weekly_cap_reached`로 기록만 남고, 하루 수면 10시간 한도가 먼저 걸리면 `daily_cap_reached`가 우선합니다.
+- 앱은 0007 적용 전 서버(지금의 원격)에서도 기록·프로필을 읽도록 충전 열이 없으면 예전 열로 다시 조회합니다(목표 시간은 기본값으로 표시).
+
+`0007_sleep_mode.sql`이 이 모드입니다. `users`에 목표 시간 두 열, `sessions`에 충전 이벤트 두 열을 더하고, 수면 전용 정산 함수 `finish_sleep_session(p_session_id, p_user_id, p_client_ended_at, p_ended_charging)`을 만듭니다. 적립 자체는 기존 `apply_earn`이 모드별 규칙(`earn_rate.sleep_per_hour`, `daily_cap_minutes.sleep`)으로 처리하므로 원장·정산·부스터가 수면에도 그대로 적용됩니다. `session-start`는 `mode: 'sleep'`을 받아 `source = 'charge'`(충전 중 시작) 또는 `'timer'`로 저장하고, `session-end`는 세션 모드를 읽어 두 정산 함수 중 하나를 고릅니다.
+
+## 광고 부스터 (AdMob)
+
+`react-native-google-mobile-ads`(17.4.0)로 리워드 광고를 실제로 띄웁니다. 광고 단위는 환경변수 `EXPO_PUBLIC_ADMOB_REWARDED_UNIT_ID_IOS`·`..._ANDROID`를 먼저 쓰고, 비어 있으면 Google이 공개한 테스트 광고 단위(`TestIds.REWARDED`)로 떨어집니다. 앱 ID는 `app.json`의 Expo config plugin(`iosAppId`·`androidAppId`)에 넣었고, 현재 값은 Google 테스트 앱 ID입니다.
+
+- 광고 요청에는 `serverSideVerificationOptions.userId`(Supabase user id)와 `customData`(`{"v":1,"kind":"settlement_booster","session_id":"…"}` 또는 `{"v":1,"kind":"weekly_box"}`)를 실어 보냅니다. 앱과 콜백의 인코딩이 같은지 `tests/adPlacement.test.mjs`가 검사합니다.
+- 앱은 광고를 띄우기만 하고 포인트를 만들지 않습니다. 지급은 AdMob SSV 콜백(`ad-reward-ssv`)이 서명을 검증한 뒤에만 일어나며, 앱은 `rewarded`·`dismissed`·`unavailable` 세 결과만 안내합니다.
+- 광고 로드 15초 타임아웃, 웹·Expo Go·모듈 없음·노필 모두 `unavailable`로 처리해 기본 적립은 그대로 유지됩니다.
+- **AdMob 콘솔에 꼭 해야 할 일**: 앱 등록 → 광고 단위(리워드) 생성 → 광고 단위 ID를 위 환경변수에 넣기 → 광고 단위의 SSV 콜백 URL을 `https://uhisjleftevizjfudeip.supabase.co/functions/v1/ad-reward-ssv`로 등록. `app.json`의 앱 ID도 실제 AdMob 앱 ID로 바꿔야 수익이 잡힙니다.
 
 현재 발송 제휴사·쿠폰 재고가 없어 **운영 활성 상품은 0건**입니다. 상품 발송 수단과 재고를 마련한 뒤에만 실제 상품을 활성화해야 합니다. 교환 신청이 접수되더라도 외부 발송은 자동화되지 않았으며, 운영자가 발송 결과를 확인하고 상태를 처리해야 합니다.
 
@@ -66,9 +87,12 @@ npx supabase db query --remote=uhisjleftevizjfudeip --file tests/redemption.sql 
 npx supabase db query --remote=uhisjleftevizjfudeip --file tests/redemptionRls.sql --yes
 npx supabase db query --remote=uhisjleftevizjfudeip --file tests/adBooster.sql --yes
 npx supabase db query --remote=uhisjleftevizjfudeip --file tests/weeklyCaps.sql --yes
+npx supabase db query --remote=uhisjleftevizjfudeip --file tests/sleepMode.sql --yes
 ```
 
 `ad-reward-ssv`는 AdMob 콘솔의 SSV 콜백 URL(`https://<project>.supabase.co/functions/v1/ad-reward-ssv`)로 등록하고 JWT 검증을 끄고 배포해야 합니다(`verify_jwt = false`). 나머지 함수는 JWT 검증이 켜져 있습니다.
+
+**적용 순서**: DB를 먼저 올리고 함수를 배포합니다. 새 `session-start`·`session-end`는 0007이 더한 `started_charging`·`ended_charging` 열을 쓰기 때문에, 순서가 바뀌면 수면 기록만 실패합니다(집중 기록은 그대로 동작). 앱은 열이 없는 동안 예전 열로 다시 조회해 화면이 깨지지 않습니다.
 
 `supabase/config.toml`에는 로컬 개발용 Auth 기본값도 들어 있습니다. 전체 파일을 `supabase config push`로 원격에 적용하면 이메일 확인 같은 원격 설정이 바뀔 수 있으므로, 원격 설정은 변경할 항목만 지정해 적용합니다.
 
