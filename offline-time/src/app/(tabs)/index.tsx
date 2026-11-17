@@ -7,6 +7,8 @@ import { Screen } from '@/components/Screen';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { useProfile } from '@/features/auth/useProfile';
 import { pointTransactionsQueryKey } from '@/features/points/pointApi';
+import { DEFAULT_POINT_RULES, getPointRules, pointRulesQueryKey } from '@/features/points/pointRulesApi';
+import { boosterBonus } from '@/features/points/rewardMath';
 import { useFocusTimerStore } from '@/features/session/focusTimerStore';
 import { endFocusSession, listSessions, sessionQueryKey, startFocusSession,
   type FocusMinutes, type TimeSession } from '@/features/session/sessionApi';
@@ -35,6 +37,9 @@ export default function Home() {
   const selectMinutes = useFocusTimerStore((state) => state.selectMinutes);
   const nowMs = useFocusTimerStore((state) => state.nowMs);
   const tick = useFocusTimerStore((state) => state.tick);
+  const rules = useQuery({ queryKey: pointRulesQueryKey, queryFn: getPointRules,
+    staleTime: 5 * 60_000 });
+  const pointRules = rules.data ?? DEFAULT_POINT_RULES;
   const sessions = useQuery({
     queryKey: sessionQueryKey(userId),
     enabled: !!userId,
@@ -64,13 +69,14 @@ export default function Home() {
       updateSession(result.session);
       void queryClient.invalidateQueries({ queryKey: pointTransactionsQueryKey(userId) });
       void queryClient.invalidateQueries({ queryKey: walletQueryKey(userId) });
+      const amount = result.transaction?.amount ?? 0;
       setFeedback(result.session.status === 'invalid'
         ? result.session.invalid_reason === 'clock_skew'
           ? '기기 시간이 맞지 않아 포인트를 적립하지 못했습니다.'
           : '20분 미만의 집중 시간은 유효하지 않은 기록으로 저장됩니다.'
-        : result.transaction
-          ? `${result.transaction.amount}P가 적립 예정으로 기록됐습니다.`
-          : '집중 시간을 기록했습니다. 포인트 기록을 확인해 주세요.');
+        : amount > 0
+          ? `${amount}P가 적립 예정이에요. 기록 탭에서 광고 1편을 보면 ${boosterBonus(amount, pointRules.ads.booster_multiplier)}P를 더 받을 수 있어요.`
+          : `기록을 저장했어요. 적립은 ${pointRules.earn.floor_minutes}분 단위로 계산해 1시간부터 쌓입니다.`);
     },
     onError: () => setFeedback('집중 기록을 종료하지 못했습니다. 다시 시도해 주세요.'),
   });
@@ -111,6 +117,11 @@ export default function Home() {
         else start.mutate();
       }} /> : null}
     {feedback ? <Text accessibilityRole="alert" style={styles.feedback}>{feedback}</Text> : null}
+    <View style={styles.infoCard}>
+      <Text style={styles.sectionTitle}>적립 기준</Text>
+      <Text style={styles.description}>기본 적립은 1시간 = {pointRules.earn.focus_per_hour}P, {pointRules.earn.floor_minutes}분 단위로 계산해요.</Text>
+      <Text style={styles.description}>기록을 마친 뒤 광고 1편을 보면 그 기록의 적립이 {pointRules.ads.booster_multiplier}배가 돼요. 하루 {pointRules.ads.daily_max}회까지 받을 수 있어요.</Text>
+    </View>
     <Text style={styles.hint}>선택한 주력 시간: {labels[mode]}</Text>
     <View style={styles.spacer} />
     <ActionButton label="로그아웃" secondary onPress={() => { void supabase?.auth.signOut(); }} />
@@ -122,6 +133,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 30, fontWeight: '800', color: tokens.color.ink },
   card: { backgroundColor: tokens.color.surface, borderRadius: tokens.radius.lg, padding: 24, minHeight: 220,
     justifyContent: 'center', gap: 12, marginTop: 12 },
+  infoCard: { backgroundColor: tokens.color.surface, borderRadius: tokens.radius.lg, padding: 24, gap: 8 },
   status: { color: tokens.color.accent, fontWeight: '700', fontSize: 14 },
   cardTitle: { color: tokens.color.ink, fontSize: 23, lineHeight: 32, fontWeight: '800' },
   timer: { color: tokens.color.accent, fontSize: 44, fontWeight: '800', fontVariant: ['tabular-nums'] },

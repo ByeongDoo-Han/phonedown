@@ -7,6 +7,8 @@ import { ActivityIndicator, StyleSheet, Text, TextInput, View } from 'react-nati
 import { ActionButton } from '@/components/ActionButton';
 import { Screen } from '@/components/Screen';
 import { useAuth } from '@/features/auth/AuthProvider';
+import { DEFAULT_POINT_RULES, getPointRules, pointRulesQueryKey } from '@/features/points/pointRulesApi';
+import { formatPointRate, krwForPoints } from '@/features/points/rewardMath';
 import { getWalletSummary, listProducts, listRedemptions, productsQueryKey,
   redemptionsQueryKey, requestRedemption, walletQueryKey } from '@/features/store/storeApi';
 import { tokens } from '@/theme/tokens';
@@ -27,6 +29,10 @@ export default function Store() {
     queryFn: listProducts });
   const history = useQuery({ queryKey: redemptionsQueryKey(userId), enabled: !!userId,
     queryFn: () => listRedemptions(userId!) });
+  const rules = useQuery({ queryKey: pointRulesQueryKey, queryFn: getPointRules,
+    staleTime: 5 * 60_000 });
+  const pointRules = rules.data ?? DEFAULT_POINT_RULES;
+  const formatWon = (points: number) => `${krwForPoints(points, pointRules.currency.krw_1000_points).toLocaleString('ko-KR')}원`;
   const selectedProduct = products.data?.find((item) => item.id === selected?.productId);
   const phoneValid = /^01[016789][0-9]{7,8}$/.test(phone.replace(/[^0-9]/g, ''));
 
@@ -57,6 +63,10 @@ export default function Store() {
       {wallet.isPending ? <ActivityIndicator color={tokens.color.accent} />
         : <Text style={styles.balance}>{formatPoints(wallet.data?.confirmed_points ?? 0)}</Text>}
       {wallet.data ? <Text style={styles.body}>정산 전 포인트 {formatPoints(wallet.data.pending_points)}</Text> : null}
+      <Text style={styles.body}>
+        {formatPoints(pointRules.currency.krw_1000_points)} = 1,000원 · 1P ≈ {formatPointRate(pointRules.currency.point_to_krw)}
+      </Text>
+      <Text style={styles.body}>최소 {formatPoints(pointRules.redemption.minimum_points)}부터 {pointRules.redemption.step_points}P 단위로 교환할 수 있어요.</Text>
       {wallet.isError ? <ActionButton label="포인트 다시 불러오기" secondary
         onPress={() => { void wallet.refetch(); }} /> : null}
     </View>
@@ -75,6 +85,7 @@ export default function Store() {
       return <View key={product.id} style={styles.card}>
         <Text style={styles.heading}>{product.name}</Text>
         <Text style={styles.body}>{product.type === 'naverpay' ? '네이버페이 포인트' : '모바일 상품권'} · {formatPoints(product.points)}</Text>
+        <Text style={styles.body}>{formatWon(product.points)} 상당</Text>
         <ActionButton label={soldOut ? '품절' : short ? '포인트 부족' : '교환하기'}
           disabled={soldOut || short || !wallet.data || redeem.isPending}
           onPress={() => {
