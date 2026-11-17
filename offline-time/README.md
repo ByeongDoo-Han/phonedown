@@ -1,6 +1,6 @@
 # 오프라인 타임
 
-Expo SDK 58 모바일 앱과 Supabase 데이터베이스의 초기 구현입니다. 가입, 로그인, 주력 시간 선택, 수동 집중 기록 시작·종료, 최근 기록 조회, 유효한 집중 기록의 포인트 적립과 지난주 포인트 정산이 동작합니다. 수면 자동 감지와 교환 상품 발송은 아직 동작하지 않습니다.
+Expo SDK 58 모바일 앱과 Supabase 데이터베이스의 초기 구현입니다. 가입, 로그인, 주력 시간 선택, 수동 집중 기록 시작·종료, 최근 기록 조회, 유효한 집중 기록의 포인트 적립, 지난주 포인트 정산, 교환 신청·이력이 동작합니다. 수면 자동 감지와 교환 상품 발송은 아직 동작하지 않습니다.
 
 연결된 원격 `apptech` 프로젝트(`uhisjleftevizjfudeip`)는 PostgreSQL 17.11입니다. 초기 기획의 PostgreSQL 15 고정 조건은 2026-11-16 사용자 선택에 따라 이 프로젝트에서 PostgreSQL 17로 변경했습니다. `0001_init.sql`과 앱 복귀 URL 설정은 원격에 적용됐습니다.
 
@@ -48,12 +48,18 @@ Google 로그인은 Expo Go에서 복귀 URL을 테스트할 수 없습니다. i
 
 `0003_weekly_settlement.sql`은 완료된 KST 주의 `pending` 적립을 `confirmed`로 바꿉니다. 운영 DB는 UTC이며 Cron이 매일 UTC 15:00(KST 00:00)에 완료된 주를 확인합니다. 월요일에 지난주를 정산하고, 뒤늦게 들어온 지난주 적립도 다음 실행에서 처리합니다. 같은 주를 다시 정산해도 포인트를 중복 확정하지 않습니다. 이번 주 적립은 그 주가 끝나기 전에는 확정할 수 없습니다.
 
+`0004_redemption.sql`은 활성 상품에 대해서만 교환을 허용합니다. 확정 잔액·최소 1,000P·1,000P 단위·재고를 DB 트랜잭션 안에서 확인하고, 교환 신청과 음수 장부 행을 함께 기록합니다. 같은 요청 키를 재전송해도 원래 신청을 반환합니다. 실제 발송 후 운영자가 `resolve_redemption(id, true)`로 발송 완료 처리할 수 있고, 발송 실패 시 `resolve_redemption(id, false, reason)`은 환급 장부 행과 재고 복원을 한 번만 수행합니다. 앱 교환소는 확정 잔액, 정산 전 포인트, 활성 상품, 신청 이력을 읽습니다.
+
+현재 발송 제휴사·쿠폰 재고가 없어 **운영 활성 상품은 0건**입니다. 상품 발송 수단과 재고를 마련한 뒤에만 실제 상품을 활성화해야 합니다. 교환 신청이 접수되더라도 외부 발송은 자동화되지 않았으며, 운영자가 발송 결과를 확인하고 상태를 처리해야 합니다.
+
 ```sh
 npx supabase db push --remote=uhisjleftevizjfudeip --skip-vault
 npx supabase functions deploy session-start session-end --remote=uhisjleftevizjfudeip --use-api
 node --experimental-strip-types --test tests/focusRules.test.mjs
 npx supabase db query --remote=uhisjleftevizjfudeip --file tests/focusPoints.sql --yes
 npx supabase db query --remote=uhisjleftevizjfudeip --file tests/settlement.sql --yes
+npx supabase db query --remote=uhisjleftevizjfudeip --file tests/redemption.sql --yes
+npx supabase db query --remote=uhisjleftevizjfudeip --file tests/redemptionRls.sql --yes
 ```
 
 두 함수는 운영 `apptech` 프로젝트에 배포됐으며 JWT 검증이 켜져 있습니다.

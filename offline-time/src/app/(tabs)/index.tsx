@@ -10,6 +10,7 @@ import { pointTransactionsQueryKey } from '@/features/points/pointApi';
 import { useFocusTimerStore } from '@/features/session/focusTimerStore';
 import { endFocusSession, listSessions, sessionQueryKey, startFocusSession,
   type FocusMinutes, type TimeSession } from '@/features/session/sessionApi';
+import { walletQueryKey } from '@/features/store/storeApi';
 import { supabase } from '@/lib/supabase';
 import { tokens } from '@/theme/tokens';
 
@@ -62,6 +63,7 @@ export default function Home() {
     onSuccess: (result) => {
       updateSession(result.session);
       void queryClient.invalidateQueries({ queryKey: pointTransactionsQueryKey(userId) });
+      void queryClient.invalidateQueries({ queryKey: walletQueryKey(userId) });
       setFeedback(result.session.status === 'invalid'
         ? result.session.invalid_reason === 'clock_skew'
           ? '기기 시간이 맞지 않아 포인트를 적립하지 못했습니다.'
