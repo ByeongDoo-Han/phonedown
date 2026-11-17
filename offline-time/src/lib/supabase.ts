@@ -1,11 +1,25 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import * as ExpoCrypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
 import { AppState, Platform } from 'react-native';
 import 'react-native-url-polyfill/auto';
 
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const key = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+
+// Supabase uses WebCrypto for the PKCE S256 challenge. Hermes does not expose
+// subtle.digest, so provide the two crypto methods used by Supabase on native.
+if (Platform.OS !== 'web' && !globalThis.crypto?.subtle) {
+  Object.defineProperty(globalThis, 'crypto', {
+    configurable: true,
+    value: {
+      ...globalThis.crypto,
+      getRandomValues: ExpoCrypto.getRandomValues,
+      subtle: { digest: ExpoCrypto.digest },
+    },
+  });
+}
 
 const storage = Platform.OS === 'web'
   ? AsyncStorage

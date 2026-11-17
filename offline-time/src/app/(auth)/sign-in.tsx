@@ -6,7 +6,7 @@ import { ActionButton } from '@/components/ActionButton';
 import { Screen } from '@/components/Screen';
 import { AppleSignInButton } from '@/features/auth/AppleSignInButton';
 import { useAuth } from '@/features/auth/AuthProvider';
-import { getAuthRedirectUrl, signInWithProvider } from '@/features/auth/socialSignIn';
+import { getAuthRedirectUrl, OAuthDevelopmentBuildRequiredError, signInWithProvider } from '@/features/auth/socialSignIn';
 import { supabase } from '@/lib/supabase';
 import { tokens } from '@/theme/tokens';
 
@@ -51,7 +51,11 @@ export default function SignIn() {
     setBusy(true);
     setMessage('');
     try { await signInWithProvider('google'); }
-    catch { setMessage('Google 로그인을 마치지 못했습니다. 다시 시도해 주세요.'); }
+    catch (error) {
+      setMessage(error instanceof OAuthDevelopmentBuildRequiredError
+        ? error.message
+        : 'Google 로그인을 마치지 못했습니다. 다시 시도해 주세요.');
+    }
     finally { setBusy(false); }
   };
 

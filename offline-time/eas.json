@@ -1,0 +1,15 @@
+{
+  "build": {
+    "preview-simulator": {
+      "environment": "preview",
+      "ios": {
+        "simulator": true
+      }
+    },
+    "preview-device": {
+      "environment": "preview",
+      "distribution": "internal",
+      "ios": {}
+    }
+  }
+}

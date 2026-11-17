@@ -1,4 +1,5 @@
 import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Crypto from 'expo-crypto';
 
 import { supabase } from '@/lib/supabase';
 
@@ -11,16 +12,28 @@ export function AppleSignInButton({ disabled, onError }: { disabled: boolean; on
     onPress={() => {
       const client = supabase;
       if (disabled || !client) return;
-      AppleAuthentication.signInAsync({ requestedScopes: [
-        AppleAuthentication.AppleAuthenticationScope.EMAIL,
-        AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-      ] }).then(async (credential) => {
-        if (!credential.identityToken) throw new Error('Apple 인증 정보가 없습니다.');
-        const { error } = await client.auth.signInWithIdToken({ provider: 'apple', token: credential.identityToken });
-        if (error) throw error;
-      }).catch((error: { code?: string }) => {
-        if (error.code !== 'ERR_REQUEST_CANCELED') onError();
-      });
+      void (async () => {
+        try {
+          const nonce = Crypto.randomUUID();
+          const hashedNonce = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, nonce);
+          const credential = await AppleAuthentication.signInAsync({
+            nonce: hashedNonce,
+            requestedScopes: [
+              AppleAuthentication.AppleAuthenticationScope.EMAIL,
+              AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+            ],
+          });
+          if (!credential.identityToken) throw new Error('Apple 인증 정보가 없습니다.');
+          const { error } = await client.auth.signInWithIdToken({
+            provider: 'apple',
+            token: credential.identityToken,
+            nonce,
+          });
+          if (error) throw error;
+        } catch (error) {
+          if ((error as { code?: string }).code !== 'ERR_REQUEST_CANCELED') onError();
+        }
+      })();
     }}
   />;
 }

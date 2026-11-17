@@ -2,6 +2,7 @@ import { Redirect, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 
+import { exchangeAuthCode } from '@/features/auth/exchangeAuthCode';
 import { supabase } from '@/lib/supabase';
 
 export default function AuthCallback() {
@@ -10,8 +11,8 @@ export default function AuthCallback() {
 
   useEffect(() => {
     if (!code || !supabase) return;
-    supabase.auth.exchangeCodeForSession(code)
-      .then(({ error }) => setState(error ? 'error' : 'success'))
+    exchangeAuthCode(code)
+      .then(() => setState('success'))
       .catch(() => setState('error'));
   }, [code]);
 

@@ -42,6 +42,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "25621109-26a9-4329-abbe-2e170f91ab41"
+      }
+    },
+    "owner": "mybeats"
   }
 }
