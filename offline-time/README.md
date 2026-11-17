@@ -1,6 +1,6 @@
 # 오프라인 타임
 
-Expo SDK 58 모바일 앱과 Supabase 데이터베이스의 초기 구현입니다. 현재 M0 범위는 가입, 로그인, 주력 시간 선택, 홈 진입입니다. 세션 적립, 정산, 교환은 아직 동작하지 않습니다.
+Expo SDK 58 모바일 앱과 Supabase 데이터베이스의 초기 구현입니다. 가입, 로그인, 주력 시간 선택, 수동 집중 기록 시작·종료, 최근 기록 조회가 동작합니다. 포인트 적립, 수면 자동 감지, 정산, 교환은 아직 동작하지 않습니다.
 
 연결된 원격 `apptech` 프로젝트(`uhisjleftevizjfudeip`)는 PostgreSQL 17.11입니다. 초기 기획의 PostgreSQL 15 고정 조건은 2026-11-16 사용자 선택에 따라 이 프로젝트에서 PostgreSQL 17로 변경했습니다. `0001_init.sql`과 앱 복귀 URL 설정은 원격에 적용됐습니다.
 
@@ -37,6 +37,19 @@ Expo 프로젝트 [`@mybeats/offline-time`](https://expo.dev/accounts/mybeats/pr
 Google 로그인은 Expo Go에서 복귀 URL을 테스트할 수 없습니다. iOS 또는 Android 개발 빌드에서 로그인하고, Google 동의 화면이 테스트 상태라면 테스트 사용자로 지정된 계정을 사용합니다. 개발 빌드 방법은 [Expo 인증 문서](https://docs.expo.dev/guides/authentication/)를 참고하세요.
 
 서비스 역할 키와 OAuth 비밀 키는 앱 환경 변수에 넣지 않습니다. 앱에는 publishable key만 사용합니다.
+
+## 집중 기록
+
+홈에서 30·60·90분 목표를 선택하고 집중 기록을 시작하거나 종료할 수 있습니다. 서버의 `session-start`, `session-end` Edge Function이 로그인 사용자와 서버 시각을 확인한 뒤 `sessions`에 저장합니다. 같은 사용자의 열린 기록은 하나만 허용하며, 종료 요청을 다시 보내도 이미 종료된 기록을 반환합니다.
+
+20분 미만은 `invalid`로 저장하고, 3시간을 넘기면 저장 시간을 3시간으로 제한합니다. 기록 탭은 최근 50건을 읽습니다. 이 단계에서는 기록에 포인트를 지급하지 않습니다.
+
+```sh
+npx supabase functions deploy session-start session-end --remote=uhisjleftevizjfudeip --use-api
+node --experimental-strip-types --test tests/focusRules.test.mjs
+```
+
+두 함수는 운영 `apptech` 프로젝트에 배포됐으며 JWT 검증이 켜져 있습니다.
 
 `supabase/config.toml`에는 로컬 개발용 Auth 기본값도 들어 있습니다. 전체 파일을 `supabase config push`로 원격에 적용하면 이메일 확인 같은 원격 설정이 바뀔 수 있으므로, 원격 설정은 변경할 항목만 지정해 적용합니다.
 
