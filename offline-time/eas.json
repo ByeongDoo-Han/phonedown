@@ -2,12 +2,14 @@
   "build": {
     "preview-simulator": {
       "environment": "preview",
+      "pnpm": "12.21.0",
       "ios": {
         "simulator": true
       }
     },
     "preview-device": {
       "environment": "preview",
+      "pnpm": "12.21.0",
       "distribution": "internal",
       "ios": {}
     }
