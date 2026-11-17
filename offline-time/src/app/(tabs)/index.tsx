@@ -6,6 +6,7 @@ import { ActionButton } from '@/components/ActionButton';
 import { Screen } from '@/components/Screen';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { useProfile } from '@/features/auth/useProfile';
+import { pointTransactionsQueryKey } from '@/features/points/pointApi';
 import { useFocusTimerStore } from '@/features/session/focusTimerStore';
 import { endFocusSession, listSessions, sessionQueryKey, startFocusSession,
   type FocusMinutes, type TimeSession } from '@/features/session/sessionApi';
@@ -58,11 +59,16 @@ export default function Home() {
   });
   const end = useMutation({
     mutationFn: (sessionId: string) => endFocusSession(sessionId),
-    onSuccess: (completed) => {
-      updateSession(completed);
-      setFeedback(completed.status === 'invalid'
-        ? '20분 미만의 집중 시간은 유효하지 않은 기록으로 저장됩니다.'
-        : '집중 시간을 기록했습니다. 기록 탭에서 확인할 수 있어요.');
+    onSuccess: (result) => {
+      updateSession(result.session);
+      void queryClient.invalidateQueries({ queryKey: pointTransactionsQueryKey(userId) });
+      setFeedback(result.session.status === 'invalid'
+        ? result.session.invalid_reason === 'clock_skew'
+          ? '기기 시간이 맞지 않아 포인트를 적립하지 못했습니다.'
+          : '20분 미만의 집중 시간은 유효하지 않은 기록으로 저장됩니다.'
+        : result.transaction
+          ? `${result.transaction.amount}P가 적립 예정으로 기록됐습니다.`
+          : '집중 시간을 기록했습니다. 포인트 기록을 확인해 주세요.');
     },
     onError: () => setFeedback('집중 기록을 종료하지 못했습니다. 다시 시도해 주세요.'),
   });

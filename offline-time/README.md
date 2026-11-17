@@ -1,6 +1,6 @@
 # 오프라인 타임
 
-Expo SDK 58 모바일 앱과 Supabase 데이터베이스의 초기 구현입니다. 가입, 로그인, 주력 시간 선택, 수동 집중 기록 시작·종료, 최근 기록 조회가 동작합니다. 포인트 적립, 수면 자동 감지, 정산, 교환은 아직 동작하지 않습니다.
+Expo SDK 58 모바일 앱과 Supabase 데이터베이스의 초기 구현입니다. 가입, 로그인, 주력 시간 선택, 수동 집중 기록 시작·종료, 최근 기록 조회, 유효한 집중 기록의 포인트 적립이 동작합니다. 수면 자동 감지, 주간 정산, 교환은 아직 동작하지 않습니다.
 
 연결된 원격 `apptech` 프로젝트(`uhisjleftevizjfudeip`)는 PostgreSQL 17.11입니다. 초기 기획의 PostgreSQL 15 고정 조건은 2026-11-16 사용자 선택에 따라 이 프로젝트에서 PostgreSQL 17로 변경했습니다. `0001_init.sql`과 앱 복귀 URL 설정은 원격에 적용됐습니다.
 
@@ -42,11 +42,15 @@ Google 로그인은 Expo Go에서 복귀 URL을 테스트할 수 없습니다. i
 
 홈에서 30·60·90분 목표를 선택하고 집중 기록을 시작하거나 종료할 수 있습니다. 서버의 `session-start`, `session-end` Edge Function이 로그인 사용자와 서버 시각을 확인한 뒤 `sessions`에 저장합니다. 같은 사용자의 열린 기록은 하나만 허용하며, 종료 요청을 다시 보내도 이미 종료된 기록을 반환합니다.
 
-20분 미만은 `invalid`로 저장하고, 3시간을 넘기면 저장 시간을 3시간으로 제한합니다. 기록 탭은 최근 50건을 읽습니다. 이 단계에서는 기록에 포인트를 지급하지 않습니다.
+20분 미만은 `invalid`로 저장하고, 3시간을 넘기면 저장 시간을 3시간으로 제한합니다. 기록 탭은 최근 50건을 읽습니다.
+
+`0002_focus_points.sql`은 종료와 포인트 적립을 한 트랜잭션으로 처리합니다. 유효한 집중 기록은 서버 시각을 기준으로 10분 단위, 시간당 3P를 계산하고 주력 모드 1.5배 보너스, KST 기준 하루 집중 6시간 제한, 주간 180P 제한을 적용합니다. 주간 한도를 넘는 기록은 남은 포인트까지만 지급하고 이후 기록은 기본 1.0배로 적립합니다. `session:<id>:earn` 고유 키로 재시도 중복을 막습니다. 적립 행은 `pending`이며 실제 사용 가능한 포인트로 바꾸는 주간 정산은 아직 구현되지 않았습니다. 앱은 포인트를 계산하지 않고 서버 장부의 적립 예정 금액을 표시합니다.
 
 ```sh
+npx supabase db push --remote=uhisjleftevizjfudeip --skip-vault
 npx supabase functions deploy session-start session-end --remote=uhisjleftevizjfudeip --use-api
 node --experimental-strip-types --test tests/focusRules.test.mjs
+npx supabase db query --remote=uhisjleftevizjfudeip --file tests/focusPoints.sql --yes
 ```
 
 두 함수는 운영 `apptech` 프로젝트에 배포됐으며 JWT 검증이 켜져 있습니다.

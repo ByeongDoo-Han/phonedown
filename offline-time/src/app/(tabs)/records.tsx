@@ -4,6 +4,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { ActionButton } from '@/components/ActionButton';
 import { Screen } from '@/components/Screen';
 import { useAuth } from '@/features/auth/AuthProvider';
+import { listPointTransactions, pointTransactionsQueryKey, type PointTransaction } from '@/features/points/pointApi';
 import { listSessions, sessionQueryKey, type TimeSession } from '@/features/session/sessionApi';
 import { tokens } from '@/theme/tokens';
 
@@ -28,6 +29,13 @@ function statusText(session: TimeSession) {
   return '유효하지 않은 기록';
 }
 
+function pointText(transaction: PointTransaction | undefined) {
+  if (!transaction) return null;
+  if (transaction.note === 'daily_cap_reached') return '오늘 집중 적립 한도에 도달했어요';
+  if (transaction.amount === 0) return '적립 포인트 없음';
+  return `+${transaction.amount}P ${transaction.status === 'confirmed' ? '적립 완료' : '적립 예정'}`;
+}
+
 export default function Records() {
   const { session } = useAuth();
   const userId = session?.user.id;
@@ -36,6 +44,12 @@ export default function Records() {
     enabled: !!userId,
     queryFn: () => listSessions(userId!),
   });
+  const points = useQuery({
+    queryKey: pointTransactionsQueryKey(userId),
+    enabled: !!userId,
+    queryFn: () => listPointTransactions(userId!),
+  });
+  const pointsBySession = new Map(points.data?.map((item) => [item.session_id, item]) ?? []);
 
   return <Screen>
     <Text style={styles.title}>기록</Text>
@@ -49,6 +63,7 @@ export default function Records() {
       <Text style={styles.heading}>아직 기록이 없어요</Text>
       <Text style={styles.body}>홈에서 집중 시간을 시작해 보세요.</Text>
     </View> : null}
+    {points.isError ? <Text style={styles.body}>포인트 기록을 불러오지 못했습니다.</Text> : null}
     {sessions.data?.map((item) => <View key={item.id} style={styles.card}>
       <View style={styles.row}>
         <Text style={styles.heading}>{item.mode === 'focus' ? '집중' : '수면'}</Text>
@@ -56,6 +71,7 @@ export default function Records() {
       </View>
       <Text style={styles.duration}>{formatDuration(item)}</Text>
       <Text style={styles.body}>{formatDate(item.server_started_at)} 시작</Text>
+      {pointText(pointsBySession.get(item.id)) ? <Text style={styles.points}>{pointText(pointsBySession.get(item.id))}</Text> : null}
     </View>)}
   </Screen>;
 }
@@ -70,4 +86,5 @@ const styles = StyleSheet.create({
   invalid: { color: tokens.color.danger },
   duration: { color: tokens.color.ink, fontSize: 28, fontWeight: '800' },
   body: { fontSize: 15, lineHeight: 23, color: tokens.color.muted },
+  points: { fontSize: 16, fontWeight: '700', color: tokens.color.accent },
 });
