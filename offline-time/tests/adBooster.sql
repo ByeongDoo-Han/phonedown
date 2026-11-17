@@ -19,7 +19,7 @@ begin
   select id into v_user from public.users order by created_at limit 1;
   if v_user is null then raise exception 'No user available for ad booster test'; end if;
 
-  -- Three valid two-hour sessions on three different days; each earns the 2P base.
+  -- Three valid two-hour sessions on three different days; each earns the 4P base.
   insert into public.sessions (id, user_id, mode, source, client_started_at,
     client_ended_at, server_started_at, server_ended_at, status)
   values
@@ -32,7 +32,7 @@ begin
       v_anchor + interval '2 days', v_anchor + interval '1 day 22 hours',
       v_anchor + interval '2 days', 'valid');
   v_txn := public.apply_earn(v_session_a);
-  if v_txn.amount <> 2 then raise exception 'Base earn for the booster test is %', v_txn.amount; end if;
+  if v_txn.amount <> 4 then raise exception 'Base earn for the booster test is %', v_txn.amount; end if;
   perform public.apply_earn(v_session_b);
   perform public.apply_earn(v_session_c);
 
@@ -40,9 +40,9 @@ begin
   v_result := public.claim_ad_booster(v_user, v_session_a, 'ssv-booster-a');
   if (v_result->>'granted')::boolean is not true
      or (v_result->>'duplicate')::boolean is not false
-     or (v_result->'transaction'->>'amount')::integer <> 2
+     or (v_result->'transaction'->>'amount')::integer <> 4
      or v_result->'transaction'->>'kind' <> 'bonus'
-     or (v_result->'claim'->>'bonus_points')::integer <> 2 then
+     or (v_result->'claim'->>'bonus_points')::integer <> 4 then
     raise exception 'First booster did not double the session: %', v_result;
   end if;
 

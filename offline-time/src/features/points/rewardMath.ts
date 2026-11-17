@@ -1,6 +1,6 @@
 // Pure point maths shared by the home, records, and store screens. Kept free of React and
-// Supabase so the v0.2 rules (1P/hour base, a 2x ad booster, 1,400P = 1,000원) are unit
-// tested directly.
+// Supabase so the v0.2 rules (2P/hour base, a 2x ad booster, a 100P base + 80P booster
+// weekly cap, and 1,400P = 1,000원) are unit tested directly.
 
 export type BoosterState =
   | { status: 'ready'; bonusPoints: number }
@@ -59,6 +59,50 @@ export function weeklyBoxState(input: {
 export function krwForPoints(points: number, krw1000Points: number): number {
   if (krw1000Points <= 0 || points <= 0) return 0;
   return Math.floor((points * 1000) / krw1000Points);
+}
+
+export type WeeklyCap = { base_points: number; booster_points: number };
+
+export type WeeklyAllowance = {
+  baseEarned: number;
+  baseRemaining: number;
+  bonusEarned: number;
+  bonusRemaining: number;
+  totalEarned: number;
+  totalCap: number;
+};
+
+// The week's base earn and ad bonus are capped separately: 100P guaranteed + 80P from ads.
+export function weeklyAllowance(input: {
+  basePoints: number;
+  bonusPoints: number;
+  cap: WeeklyCap;
+}): WeeklyAllowance {
+  const baseEarned = Math.max(0, Math.min(input.basePoints, input.cap.base_points));
+  const bonusEarned = Math.max(0, Math.min(input.bonusPoints, input.cap.booster_points));
+  return {
+    baseEarned,
+    baseRemaining: Math.max(0, input.cap.base_points - Math.max(0, input.basePoints)),
+    bonusEarned,
+    bonusRemaining: Math.max(0, input.cap.booster_points - Math.max(0, input.bonusPoints)),
+    totalEarned: baseEarned + bonusEarned,
+    totalCap: input.cap.base_points + input.cap.booster_points,
+  };
+}
+
+// 2026-11-17 is ISO week 47 in KST; the id matches the server's week_id (IYYY-"W"IW).
+export function currentWeekId(now = new Date()): string {
+  const [year, month, day] = now
+    .toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' })
+    .split('-')
+    .map(Number);
+  if (!year || !month || !day) return '';
+  const date = new Date(Date.UTC(year, month - 1, day));
+  const weekday = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - weekday);
+  const yearStart = Date.UTC(date.getUTCFullYear(), 0, 1);
+  const week = Math.ceil(((date.getTime() - yearStart) / 86_400_000 + 1) / 7);
+  return `${date.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
 }
 
 export function pointsForKrw(krw: number, krw1000Points: number): number {

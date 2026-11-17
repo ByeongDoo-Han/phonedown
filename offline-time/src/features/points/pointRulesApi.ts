@@ -1,7 +1,8 @@
 import { supabase } from '@/lib/supabase';
 
 // Values an unconfigured or partially migrated database should still read as: base earn of
-// 1P per hour, a 2x ad booster twice a day, and 1,000원 at 1,400P.
+// 2P per hour (30 minutes = 1P), a 2x ad booster twice a day, a 100P base + 80P booster
+// weekly cap, and 1,000원 at 1,400P.
 export type CurrencyRules = {
   point_to_krw: number;
   krw_1000_points: number;
@@ -11,6 +12,11 @@ export type EarnRules = {
   sleep_per_hour: number;
   focus_per_hour: number;
   floor_minutes: number;
+};
+
+export type WeeklyCapRules = {
+  base_points: number;
+  booster_points: number;
 };
 
 export type AdsRules = {
@@ -30,13 +36,15 @@ export type RedemptionRules = {
 export type PointRules = {
   currency: CurrencyRules;
   earn: EarnRules;
+  weekly: WeeklyCapRules;
   ads: AdsRules;
   redemption: RedemptionRules;
 };
 
 export const DEFAULT_POINT_RULES: PointRules = {
   currency: { point_to_krw: 0.714, krw_1000_points: 1400 },
-  earn: { sleep_per_hour: 1, focus_per_hour: 1, floor_minutes: 10 },
+  earn: { sleep_per_hour: 2, focus_per_hour: 2, floor_minutes: 10 },
+  weekly: { base_points: 100, booster_points: 80 },
   ads: {
     settlement_booster: false,
     booster_multiplier: 2,
@@ -66,6 +74,7 @@ export function toPointRules(rows: { key: string; value: unknown }[]): PointRule
   const byKey = new Map(rows.map((row) => [row.key, row.value]));
   const currency = byKey.get('currency');
   const earn = byKey.get('earn_rate');
+  const weekly = byKey.get('weekly_cap');
   const ads = byKey.get('ads');
   const redemption = byKey.get('redemption');
   return {
@@ -78,6 +87,11 @@ export function toPointRules(rows: { key: string; value: unknown }[]): PointRule
       sleep_per_hour: readNumber(earn, 'sleep_per_hour', DEFAULT_POINT_RULES.earn.sleep_per_hour),
       focus_per_hour: readNumber(earn, 'focus_per_hour', DEFAULT_POINT_RULES.earn.focus_per_hour),
       floor_minutes: readNumber(earn, 'floor_minutes', DEFAULT_POINT_RULES.earn.floor_minutes),
+    },
+    weekly: {
+      base_points: readNumber(weekly, 'base_points', DEFAULT_POINT_RULES.weekly.base_points),
+      booster_points: readNumber(weekly, 'booster_points',
+        DEFAULT_POINT_RULES.weekly.booster_points),
     },
     ads: {
       settlement_booster: readBoolean(ads, 'settlement_booster',
@@ -102,7 +116,8 @@ export function toPointRules(rows: { key: string; value: unknown }[]): PointRule
 export async function getPointRules(): Promise<PointRules> {
   if (!supabase) return DEFAULT_POINT_RULES;
   const { data, error } = await supabase.from('point_rules')
-    .select('key,value').in('key', ['currency', 'earn_rate', 'ads', 'redemption']);
+    .select('key,value')
+    .in('key', ['currency', 'earn_rate', 'weekly_cap', 'ads', 'redemption']);
   if (error) throw error;
   return toPointRules((data ?? []) as { key: string; value: unknown }[]);
 }

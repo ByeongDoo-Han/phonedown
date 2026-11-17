@@ -8,7 +8,7 @@ import { ActionButton } from '@/components/ActionButton';
 import { Screen } from '@/components/Screen';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { DEFAULT_POINT_RULES, getPointRules, pointRulesQueryKey } from '@/features/points/pointRulesApi';
-import { formatPointRate, krwForPoints } from '@/features/points/rewardMath';
+import { formatPointRate, krwForPoints, pointsForKrw } from '@/features/points/rewardMath';
 import { getWalletSummary, listProducts, listRedemptions, productsQueryKey,
   redemptionsQueryKey, requestRedemption, walletQueryKey } from '@/features/store/storeApi';
 import { tokens } from '@/theme/tokens';
@@ -67,6 +67,8 @@ export default function Store() {
         {formatPoints(pointRules.currency.krw_1000_points)} = 1,000원 · 1P ≈ {formatPointRate(pointRules.currency.point_to_krw)}
       </Text>
       <Text style={styles.body}>최소 {formatPoints(pointRules.redemption.minimum_points)}부터 {pointRules.redemption.step_points}P 단위로 교환할 수 있어요.</Text>
+      <Text style={styles.body}>소액 상품부터 준비해요 · 네이버페이 1,000원 {formatPoints(pointsForKrw(1000, pointRules.currency.krw_1000_points))},
+        {' '}5,000원 상품권 {formatPoints(pointsForKrw(5000, pointRules.currency.krw_1000_points))}</Text>
       {wallet.isError ? <ActionButton label="포인트 다시 불러오기" secondary
         onPress={() => { void wallet.refetch(); }} /> : null}
     </View>

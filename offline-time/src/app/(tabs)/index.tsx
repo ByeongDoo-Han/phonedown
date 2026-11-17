@@ -8,7 +8,6 @@ import { useAuth } from '@/features/auth/AuthProvider';
 import { useProfile } from '@/features/auth/useProfile';
 import { pointTransactionsQueryKey } from '@/features/points/pointApi';
 import { DEFAULT_POINT_RULES, getPointRules, pointRulesQueryKey } from '@/features/points/pointRulesApi';
-import { boosterBonus } from '@/features/points/rewardMath';
 import { useFocusTimerStore } from '@/features/session/focusTimerStore';
 import { endFocusSession, listSessions, sessionQueryKey, startFocusSession,
   type FocusMinutes, type TimeSession } from '@/features/session/sessionApi';
@@ -75,8 +74,10 @@ export default function Home() {
           ? '기기 시간이 맞지 않아 포인트를 적립하지 못했습니다.'
           : '20분 미만의 집중 시간은 유효하지 않은 기록으로 저장됩니다.'
         : amount > 0
-          ? `${amount}P가 적립 예정이에요. 기록 탭에서 광고 1편을 보면 ${boosterBonus(amount, pointRules.ads.booster_multiplier)}P를 더 받을 수 있어요.`
-          : `기록을 저장했어요. 적립은 ${pointRules.earn.floor_minutes}분 단위로 계산해 1시간부터 쌓입니다.`);
+          ? `${amount}P 적립 예정이에요. 기록 탭에서 광고 1편을 보면 같은 금액을 한 번 더 받을 수 있어요.`
+          : result.transaction?.note === 'weekly_cap_reached'
+            ? `이번 주 기본 적립 ${pointRules.weekly.base_points}P를 모두 채웠어요. 기록은 그대로 남고, 다음 주에 다시 적립돼요.`
+            : `기록을 저장했어요. 적립은 ${pointRules.earn.floor_minutes}분 단위로 계산해 30분부터 1P씩 쌓입니다.`);
     },
     onError: () => setFeedback('집중 기록을 종료하지 못했습니다. 다시 시도해 주세요.'),
   });
@@ -119,8 +120,9 @@ export default function Home() {
     {feedback ? <Text accessibilityRole="alert" style={styles.feedback}>{feedback}</Text> : null}
     <View style={styles.infoCard}>
       <Text style={styles.sectionTitle}>적립 기준</Text>
-      <Text style={styles.description}>기본 적립은 1시간 = {pointRules.earn.focus_per_hour}P, {pointRules.earn.floor_minutes}분 단위로 계산해요.</Text>
+      <Text style={styles.description}>기본 적립은 1시간 = {pointRules.earn.focus_per_hour}P, {pointRules.earn.floor_minutes}분 단위로 계산해요. 30분 집중하면 1P가 쌓여요.</Text>
       <Text style={styles.description}>기록을 마친 뒤 광고 1편을 보면 그 기록의 적립이 {pointRules.ads.booster_multiplier}배가 돼요. 하루 {pointRules.ads.daily_max}회까지 받을 수 있어요.</Text>
+      <Text style={styles.description}>한 주에는 기본 {pointRules.weekly.base_points}P, 광고 부스터 {pointRules.weekly.booster_points}P까지 받을 수 있어요.</Text>
     </View>
     <Text style={styles.hint}>선택한 주력 시간: {labels[mode]}</Text>
     <View style={styles.spacer} />

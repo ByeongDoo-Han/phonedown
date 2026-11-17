@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { boosterBonus, boosterState, formatPointRate, kstDayString, krwForPoints,
-  pointsForKrw, weeklyBoxState } from '../src/features/points/rewardMath.ts';
+import { boosterBonus, boosterState, currentWeekId, formatPointRate, kstDayString, krwForPoints,
+  pointsForKrw, weeklyAllowance, weeklyBoxState } from '../src/features/points/rewardMath.ts';
 
 test('the ad booster adds the session base points again', () => {
   assert.equal(boosterBonus(7, 2), 7);
@@ -77,4 +77,30 @@ test('points convert at 1,400P = 1,000원', () => {
 test('the claim day follows KST midnight', () => {
   assert.equal(kstDayString(new Date('2026-11-17T14:59:00.000Z')), '2026-11-17');
   assert.equal(kstDayString(new Date('2026-11-17T15:00:00.000Z')), '2026-11-18');
+});
+
+test('the week id matches the server ISO week in KST', () => {
+  assert.equal(currentWeekId(new Date('2026-11-17T10:58:00.000Z')), '2026-W47');
+  assert.equal(currentWeekId(new Date('2026-11-15T14:59:00.000Z')), '2026-W46');
+  assert.equal(currentWeekId(new Date('2026-11-15T15:00:00.000Z')), '2026-W47');
+  assert.equal(currentWeekId(new Date('2027-01-01T00:00:00.000Z')), '2026-W53');
+});
+
+test('the week splits into a 100P base earn and an 80P ad booster pool', () => {
+  const cap = { base_points: 100, booster_points: 80 };
+  assert.deepEqual(weeklyAllowance({ basePoints: 42, bonusPoints: 20, cap }), {
+    baseEarned: 42, baseRemaining: 58, bonusEarned: 20, bonusRemaining: 60,
+    totalEarned: 62, totalCap: 180,
+  });
+  assert.deepEqual(weeklyAllowance({ basePoints: 100, bonusPoints: 80, cap }), {
+    baseEarned: 100, baseRemaining: 0, bonusEarned: 80, bonusRemaining: 0,
+    totalEarned: 180, totalCap: 180,
+  });
+  assert.deepEqual(weeklyAllowance({ basePoints: 0, bonusPoints: 0, cap }), {
+    baseEarned: 0, baseRemaining: 100, bonusEarned: 0, bonusRemaining: 80,
+    totalEarned: 0, totalCap: 180,
+  });
+  // A booster never eats into the base earn and the other way round.
+  assert.equal(weeklyAllowance({ basePoints: 100, bonusPoints: 0, cap }).bonusRemaining, 80);
+  assert.equal(weeklyAllowance({ basePoints: 0, bonusPoints: 80, cap }).baseRemaining, 100);
 });

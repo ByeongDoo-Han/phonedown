@@ -7,6 +7,7 @@ export type PointTransaction = {
   session_id: string | null;
   kind: PointKind;
   amount: number;
+  week_id: string;
   status: 'pending' | 'confirmed' | 'void';
   note: string | null;
 };
@@ -16,7 +17,7 @@ export const pointTransactionsQueryKey = (userId: string | undefined) => ['point
 export async function listPointTransactions(userId: string): Promise<PointTransaction[]> {
   if (!supabase) throw new Error('서비스에 연결하지 못했습니다.');
   const { data, error } = await supabase.from('point_transactions')
-    .select('id,session_id,kind,amount,status,note')
+    .select('id,session_id,kind,amount,week_id,status,note')
     .eq('user_id', userId).in('kind', ['earn_sleep', 'earn_focus', 'bonus'])
     .order('created_at', { ascending: false }).limit(100);
   if (error) throw error;

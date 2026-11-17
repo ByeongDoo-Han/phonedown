@@ -1,6 +1,6 @@
 # 오프라인 타임
 
-Expo SDK 58 모바일 앱과 Supabase 데이터베이스의 초기 구현입니다. 가입, 로그인, 주력 시간 선택, 수동 집중 기록 시작·종료, 최근 기록 조회, 유효한 집중 기록의 포인트 적립, 지난주 포인트 정산, 교환 신청·이력이 동작합니다. 포인트는 기본 적립(1시간 = 1P)과 광고 부스터(2배)·주간 보너스 상자로 나뉘며, 광고 보상은 AdMob SSV 콜백으로만 지급됩니다. 수면 자동 감지, 앱 내 광고 표시, 교환 상품 발송은 아직 동작하지 않습니다.
+Expo SDK 58 모바일 앱과 Supabase 데이터베이스의 초기 구현입니다. 가입, 로그인, 주력 시간 선택, 수동 집중 기록 시작·종료, 최근 기록 조회, 유효한 집중 기록의 포인트 적립, 지난주 포인트 정산, 교환 신청·이력이 동작합니다. 포인트는 기본 적립(1시간 = 2P, 주 100P까지)과 광고 부스터(2배, 주 80P까지)·주간 보너스 상자로 나뉘며, 광고 보상은 AdMob SSV 콜백으로만 지급됩니다. 수면 자동 감지, 앱 내 광고 표시, 교환 상품 발송은 아직 동작하지 않습니다.
 
 연결된 원격 `apptech` 프로젝트(`uhisjleftevizjfudeip`)는 PostgreSQL 17.11입니다. 초기 기획의 PostgreSQL 15 고정 조건은 2026-11-16 사용자 선택에 따라 이 프로젝트에서 PostgreSQL 17로 변경했습니다. `0001_init.sql`과 앱 복귀 URL 설정은 원격에 적용됐습니다.
 
@@ -44,11 +44,13 @@ Google 로그인은 Expo Go에서 복귀 URL을 테스트할 수 없습니다. i
 
 20분 미만은 `invalid`로 저장하고, 3시간을 넘기면 저장 시간을 3시간으로 제한합니다. 기록 탭은 최근 50건을 읽습니다.
 
-`0002_focus_points.sql`은 종료와 포인트 적립을 한 트랜잭션으로 처리합니다. 유효한 집중 기록은 서버 시각을 기준으로 10분 단위, 시간당 1P를 계산하고 KST 기준 하루 집중 6시간 제한과 주간 180P 제한을 적용합니다. 주력 모드 배율은 v0.2에서 1.0이 되었고(보상은 광고 부스터로 이전), 주간 한도를 넘는 기록은 남은 포인트까지만 지급한 뒤 기본 단가로 계속 적립합니다. `session:<id>:earn` 고유 키로 재시도 중복을 막습니다. 적립 행은 `pending`이며 앱은 포인트를 계산하지 않고 서버 장부의 적립 예정 금액을 표시합니다.
+`0002_focus_points.sql`은 종료와 포인트 적립을 한 트랜잭션으로 처리합니다. 유효한 집중 기록은 서버 시각을 기준으로 10분 단위, 시간당 2P를 계산하고 KST 기준 하루 집중 6시간 제한과 주간 기본 적립 100P 제한을 적용합니다. 주력 모드 배율은 v0.2에서 1.0이 되었고(보상은 광고 부스터로 이전), 기본 한도를 넘는 기록도 세션은 `valid`로 남고 포인트만 0P · `weekly_cap_reached`로 기록됩니다. `session:<id>:earn` 고유 키로 재시도 중복을 막습니다. 적립 행은 `pending`이며 앱은 포인트를 계산하지 않고 서버 장부의 적립 예정 금액을 표시합니다.
 
 `0003_weekly_settlement.sql`은 완료된 KST 주의 `pending` 적립을 `confirmed`로 바꿉니다. 운영 DB는 UTC이며 Cron이 매일 UTC 15:00(KST 00:00)에 완료된 주를 확인합니다. 월요일에 지난주를 정산하고, 뒤늦게 들어온 지난주 적립도 다음 실행에서 처리합니다. 같은 주를 다시 정산해도 포인트를 중복 확정하지 않습니다. 이번 주 적립은 그 주가 끝나기 전에는 확정할 수 없습니다.
 
 `0004_redemption.sql`은 활성 상품에 대해서만 교환을 허용합니다. 확정 잔액·최소 1,400P·100P 단위·재고를 DB 트랜잭션 안에서 확인하고, 교환 신청과 음수 장부 행을 함께 기록합니다. 같은 요청 키를 재전송해도 원래 신청을 반환합니다. 실제 발송 후 운영자가 `resolve_redemption(id, true)`로 발송 완료 처리할 수 있고, 발송 실패 시 `resolve_redemption(id, false, reason)`은 환급 장부 행과 재고 복원을 한 번만 수행합니다. 앱 교환소는 확정 잔액, 정산 전 포인트, 활성 상품, 신청 이력을 읽습니다.
+
+`0006_weekly_cap_split.sql`은 v0.2 최종 단가·상한입니다. 기본 적립을 1시간 2P(30분 = 1P)로 올리고, 주간 상한을 기본 100P + 광고 부스터 80P로 나눕니다. 기본 한도에 닿은 세션은 기록은 그대로 남고 0P · `weekly_cap_reached`로 적립되며, 부스터·주간 상자는 같은 주 `bonus` 합계가 80P를 넘지 않게 잘리고 초과분은 `weekly_booster_cap`으로 기록만 됩니다. 소액 교환 라인업(네이버페이 1,000원 1,400P, 메가커피 아메리카노 2,800P, 상품권 5,000원 7,000P)을 `active = false`로 씨앗만 넣어 두었습니다.
 
 `0005_ad_revenue_defense.sql`은 v0.2 수익·원가 방어 구조입니다. 기본 적립을 1시간 1P로 낮추고, 유효 세션마다 광고 1편에 세션 기본 적립과 같은 `bonus` 행을 한 번 더 넣어 2배로 만듭니다(`claim_ad_booster`, 하루 2회·세션당 1회). 정산이 끝난 주에는 `claim_weekly_box`로 20P 상자를 한 번 열 수 있고, 교환 비율은 1,000원 = 1,400P(1P ≈ 0.714원)입니다. `ad_reward_claims`가 SSV 거래 1건당 1행을 보장하고, `settle_week`/`settle_due_weeks`는 `bonus` 행도 함께 확정합니다. 광고 보상은 `ad-reward-ssv` Edge Function이 AdMob 서명을 검증한 뒤에만 지급되며, 앱은 포인트를 만들 수 없습니다. 앱에는 아직 `react-native-google-mobile-ads`가 없어 광고를 띄우지 못하고, 기본 적립만 지급됩니다.
 
@@ -63,6 +65,7 @@ npx supabase db query --remote=uhisjleftevizjfudeip --file tests/settlement.sql 
 npx supabase db query --remote=uhisjleftevizjfudeip --file tests/redemption.sql --yes
 npx supabase db query --remote=uhisjleftevizjfudeip --file tests/redemptionRls.sql --yes
 npx supabase db query --remote=uhisjleftevizjfudeip --file tests/adBooster.sql --yes
+npx supabase db query --remote=uhisjleftevizjfudeip --file tests/weeklyCaps.sql --yes
 ```
 
 `ad-reward-ssv`는 AdMob 콘솔의 SSV 콜백 URL(`https://<project>.supabase.co/functions/v1/ad-reward-ssv`)로 등록하고 JWT 검증을 끄고 배포해야 합니다(`verify_jwt = false`). 나머지 함수는 JWT 검증이 켜져 있습니다.
