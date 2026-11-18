@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { ActionButton } from '@/components/ActionButton';
@@ -9,6 +9,8 @@ import { showRewardedAd } from '@/features/ads/rewardedAd';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { adRewardClaimsQueryKey, listAdRewardClaims,
   type AdRewardClaim } from '@/features/points/adRewardsApi';
+import { AD_REWARD_PENDING_NOTICE, AD_REWARD_WAIT_NOTICE, adRewardDeniedNotice,
+  adRewardPendingKey, adRewardPendingLabel, watchAdReward } from '@/features/points/adRewardWatch';
 import { listPointTransactions, pointTransactionsQueryKey,
   type PointTransaction } from '@/features/points/pointApi';
 import { DEFAULT_POINT_RULES, getPointRules, pointRulesQueryKey } from '@/features/points/pointRulesApi';
@@ -57,7 +59,8 @@ function basePointText(transaction: PointTransaction | undefined, baseCap: numbe
   return `기본 +${transaction.amount}P ${transaction.status === 'confirmed' ? '적립 완료' : '적립 예정'}`;
 }
 
-function RecordCard({ item, base, booster, multiplier, dailyMax, baseCap, busy, onBoost }: {
+function RecordCard({ item, base, booster, multiplier, dailyMax, baseCap, busy, pending,
+  onBoost }: {
   item: TimeSession;
   base: PointTransaction | undefined;
   booster: BoosterState;
@@ -65,6 +68,7 @@ function RecordCard({ item, base, booster, multiplier, dailyMax, baseCap, busy, 
   dailyMax: number;
   baseCap: number;
   busy: boolean;
+  pending: boolean;
   onBoost: () => void;
 }) {
   return <View style={styles.card}>
@@ -81,8 +85,11 @@ function RecordCard({ item, base, booster, multiplier, dailyMax, baseCap, busy, 
       ? <Text style={styles.points}>+{booster.bonusPoints}P 광고 부스터 적용</Text>
       : null}
     {booster.status === 'ready'
-      ? <ActionButton label={`광고 보고 ${multiplier}배 받기 (+${booster.bonusPoints}P)`}
-        disabled={busy} onPress={onBoost} />
+      ? <ActionButton
+        label={pending
+          ? adRewardPendingLabel({ kind: 'settlement_booster', sessionId: item.id })
+          : `광고 보고 ${multiplier}배 받기 (+${booster.bonusPoints}P)`}
+        disabled={busy || pending} onPress={onBoost} />
       : null}
     {booster.status === 'limit'
       ? <Text style={styles.body}>오늘 부스터 {dailyMax}회를 모두 받았어요. 다음 기록부터 다시 받을 수 있어요.</Text>
@@ -95,6 +102,8 @@ export default function Records() {
   const userId = session?.user.id;
   const queryClient = useQueryClient();
   const [notice, setNotice] = useState('');
+  // 광고는 봤지만 SSV 콜백이 아직 서버에 닿지 않은 대상. 이 동안 해당 버튼만 잠근다.
+  const [pendingAds, setPendingAds] = useState<RewardedPlacement[]>([]);
   const sessions = useQuery({
     queryKey: sessionQueryKey(userId),
     enabled: !!userId,
@@ -155,20 +164,64 @@ export default function Records() {
 
   const boost = useMutation({
     mutationFn: (placement: RewardedPlacement) => showRewardedAd(placement, userId),
-    onSuccess: (outcome) => {
-      setNotice(outcome === 'unavailable'
-        ? '지금은 광고를 불러올 수 없어요. 기본 적립은 그대로 유지됩니다.'
-        : outcome === 'dismissed'
-          ? '광고를 끝까지 봐야 부스터가 적용돼요.'
-          : '부스터를 확인하고 있어요. 잠시 뒤 기록을 다시 불러와 주세요.');
-      if (outcome === 'rewarded') {
-        void queryClient.invalidateQueries({ queryKey: adRewardClaimsQueryKey(userId) });
-        void queryClient.invalidateQueries({ queryKey: pointTransactionsQueryKey(userId) });
-        void queryClient.invalidateQueries({ queryKey: walletQueryKey(userId) });
+    onSuccess: (outcome, placement) => {
+      if (outcome !== 'rewarded') {
+        setNotice(outcome === 'unavailable'
+          ? '지금은 광고를 불러올 수 없어요. 기본 적립은 그대로 유지됩니다.'
+          : '광고를 끝까지 봐야 부스터가 적용돼요.');
+        return;
       }
+      const key = adRewardPendingKey(placement);
+      setPendingAds((current) => current.some((item) => adRewardPendingKey(item) === key)
+        ? current
+        : [...current, placement]);
+      setNotice(AD_REWARD_PENDING_NOTICE);
+      void queryClient.invalidateQueries({ queryKey: adRewardClaimsQueryKey(userId) });
+      void queryClient.invalidateQueries({ queryKey: pointTransactionsQueryKey(userId) });
+      void queryClient.invalidateQueries({ queryKey: walletQueryKey(userId) });
     },
     onError: () => setNotice('광고를 불러오지 못했어요. 기본 적립은 그대로 유지됩니다.'),
   });
+
+  // 주간 상자는 정산을 마친 주에만 열린다. 그 주의 주장만 이번 시청과 견줄 수 있다.
+  const settledWeekId = box.status === 'ready' || box.status === 'claimed' ? box.weekId : null;
+
+  // The claim row appears only when the SSV callback lands, so re-read the ledger every two
+  // seconds instead of asking the user to refresh. Each watch releases its own button, and a
+  // wait that never sees a row ends with a notice rather than an endless disable. The stop
+  // functions clear the timers when the screen goes away.
+  useEffect(() => {
+    if (pendingAds.length === 0) return;
+    const stops = pendingAds.map((placement) => watchAdReward({
+      placement,
+      settledWeekId,
+      readClaims: async () => {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: adRewardClaimsQueryKey(userId) }),
+          queryClient.invalidateQueries({ queryKey: pointTransactionsQueryKey(userId) }),
+          queryClient.invalidateQueries({ queryKey: walletQueryKey(userId) }),
+        ]);
+        return queryClient.getQueryData<AdRewardClaim[]>(adRewardClaimsQueryKey(userId)) ?? [];
+      },
+      onSettled: (result) => {
+        const key = adRewardPendingKey(placement);
+        setPendingAds((current) => current.filter((item) => adRewardPendingKey(item) !== key));
+        if (result.status === 'denied') {
+          setNotice(adRewardDeniedNotice(result.reason));
+        } else if (result.status === 'timeout') {
+          // 테스트 광고처럼 SSV가 오지 않아도 버튼을 풀고 안내한다.
+          setNotice(AD_REWARD_WAIT_NOTICE);
+        } else {
+          setNotice((current) => (current === AD_REWARD_PENDING_NOTICE ? '' : current));
+        }
+      },
+    }));
+    return () => {
+      for (const stop of stops) stop();
+    };
+  }, [pendingAds, queryClient, settledWeekId, userId]);
+
+  const boxPending = pendingAds.some((placement) => placement.kind === 'weekly_box');
 
   return <Screen>
     <Text style={styles.title}>기록</Text>
@@ -206,12 +259,18 @@ export default function Records() {
       <Text style={styles.body}>{box.status === 'claimed'
         ? `${box.weekId} 정산 상자를 열었어요. +${box.bonusPoints}P가 적립 예정이에요.`
         : `${box.weekId} 정산을 마쳤어요. 광고 1편을 보면 ${box.bonusPoints}P를 더 드려요.`}</Text>
-      {box.status === 'ready' ? <ActionButton label={`광고 보고 ${box.bonusPoints}P 받기`}
-        disabled={boost.isPending} onPress={() => { setNotice(''); boost.mutate({ kind: 'weekly_box' }); }} /> : null}
+      {box.status === 'ready' ? <ActionButton
+        label={boxPending
+          ? adRewardPendingLabel({ kind: 'weekly_box' })
+          : `광고 보고 ${box.bonusPoints}P 받기`}
+        disabled={boost.isPending || boxPending}
+        onPress={() => { setNotice(''); boost.mutate({ kind: 'weekly_box' }); }} /> : null}
     </View> : null}
     {sessions.data?.map((item) => {
       const base = baseBySession.get(item.id);
       const claim = boosterBySession.get(item.id);
+      const pending = pendingAds.some((placement) => placement.kind === 'settlement_booster'
+        && placement.sessionId === item.id);
       return <RecordCard key={item.id} item={item} base={base}
         booster={boosterState({
           basePoints: base?.amount ?? 0,
@@ -225,6 +284,7 @@ export default function Records() {
         multiplier={ads.booster_multiplier} dailyMax={ads.daily_max}
         baseCap={pointRules.weekly.base_points}
         busy={boost.isPending}
+        pending={pending}
         onBoost={() => { setNotice(''); boost.mutate({ kind: 'settlement_booster', sessionId: item.id }); }} />;
     })}
   </Screen>;
