@@ -1,5 +1,42 @@
 # 구현 결정
 
+## 2026-11-19: UI 리뉴얼 · 시작 딜레이 개선 · 로컬 알림
+
+사용자가 "디자인이 너무 밤티임"이라고 한 화면 전체와, 집중/수면 시작 시 1~3초 멈춘 듯한 체감을 함께 손봤다. 브랜치 `feat/ux-ui-overhaul-notifications`. **DB 스키마(0001~0008), Edge Function(`session-start`·`session-end`·`ad-reward-ssv`), 0008 미반영 폴백은 한 줄도 바꾸지 않았다.**
+
+### 1) 시작은 즉시, 보정은 도착하면
+
+- 시작 버튼을 누르면 `onMutate`가 `pending-<ISO>` id의 **열린 세션을 로컬에 먼저 넣는다**(`src/features/session/optimistic.ts`). 홈은 그 즉시 타이머 화면·수면 카드로 바뀌고 0초부터 흐른다. 서버가 답하면 실제 행이 그 자리를 대체하고 `server_started_at`(서버 시각)으로 다시 기준을 잡는다. 두 시각 차이는 1초 안쪽이라 숫자가 튀지 않는다.
+- 그동안 카드 안에 작은 `서버와 동기화 중…` 배지를 띄운다. 버튼은 `기록을 시작하는 중…`으로 잠근다.
+- 실패하면 `onMutate`가 잡아 둔 이전 배열로 되돌리고, 이유를 문장으로 나눈다(`describeStartError`): 409/이미 열린 기록 → "이미 진행 중인 기록이 있어요", 네트워크·타임아웃 → "연결이 불안정해…", 그 밖 → "연결을 확인해 주세요". `tests/sessionStart.test.mjs`가 두 규칙(낙관적 행의 모양, 오류 문장)을 검사한다.
+- 종료 응답은 그대로 서버를 기다린다. 종료는 포인트·정산이 걸려 있어 낙관적으로 닫으면 오히려 되돌리는 비용이 크다.
+
+### 2) 로컬 알림 (`expo-notifications` 58.1.9)
+
+- `npx expo install expo-notifications`로 SDK 58 호환 버전을 받고 `app.json` plugins에 등록했다. **로컬 알림만 쓰므로 `enableRemoteNotifications: false`** — APNs entitlement를 추가하지 않아 기존 EAS 프로필·프로비저닝을 건드리지 않는다. Android 아이콘은 흰 달 모양 96×96(`assets/images/notification-icon.png`)을 새로 만들었고 채널은 `offline-time` 하나다.
+- **집중 종료 알림**: 시작이 서버에서 성공하면 `server_started_at + plannedMinutes`에 `DATE` 트리거로 1건 예약한다. 조기 종료를 누르는 순간(`end.onMutate`) 예약을 지우고, 종료 요청이 실패하면 다시 건다. 앱을 닫아도 OS가 띄우므로 "목표를 채웠다"는 사실을 놓치지 않는다.
+- **수면 취침·기상 알림**: `sleep_bedtime`·`sleep_waketime`을 그대로 `DAILY` 트리거의 시·분으로 쓴다. 토글은 수면 카드 안에 두 개(취침/기상) 있고, 선택은 `AsyncStorage`(`offline-time.sleep-reminders.v1`)에 남긴다. 앱을 다시 열면 저장된 선택으로 다시 예약해, 재부팅·업데이트로 스케줄이 사라져도 되살아난다. 목표 시간을 바꾸면 켜 둔 알림이 새 시각으로 따라 움직인다.
+- **권한·플랫폼**: 예약 직전에만 권한을 묻는다(거절되면 "휴대폰 설정에서 알림을 허용해 주세요" 안내만 하고 기록은 그대로). 웹은 `notifications.web.ts` 스텁이 `unsupported`를 돌려주고, 화면은 "웹에서는 알림을 예약할 수 없어요"라고 말한다. Expo Go·시뮬레이터에서도 예약 실패가 기록·정산을 막지 않는다(모든 호출이 결과 객체로 끝난다).
+- 시각 계산은 `src/features/notifications/schedule.ts`에 순수 함수로 분리했고 `tests/notifications.test.mjs`가 자정 넘김·월말/연말 롤오버·정확히 같은 분·잘못된 시각을 검사한다.
+- **한계**: `DAILY` 트리거는 기기 로컬 시계를 쓴다. 목표 시간은 KST 벽시계이고 국내 사용자는 둘이 같지만, 해외 체류 중에는 기기 시간대를 따른다. Android 12+ 정확한 알람 권한은 요청하지 않아(`bestEffort`) 수 분 늦을 수 있다. 원격 푸시(서버 발송)는 이번 범위가 아니다.
+
+### 3) 화면
+
+- `src/theme/tokens.ts`를 새 팔레트로 바꿨다: 라이트 캔버스 `#F7F8FA`, 화이트 카드, 딥 에메랄드 `#0F766E`, 인디고 `#5B5BD6`, 그리고 수면용 미드나잇 `#0F172A`/`#172033` + 문라이트 라벤더 `#C7D2FE`. 그림자는 `card`/`soft`/`lift` 세 단계, 숫자는 `tabular-nums`.
+- 공통 컴포넌트: `Screen`(라이트/나이트 캔버스), `ActionButton`(primary·secondary·ghost·soft·night·moon, loading), `Card`(+`SectionHeader`), `Chip`, `ProgressBar`(+`LabeledBar`), `Pill`/`Notice`.
+- **홈**: 상단에 이번 주 적립 미니 요약(기본/부스터 두 줄), 집중/수면 세그먼트, 모드별 히어로 카드(집중은 화이트, 수면은 미드나잇), 대형 타이머, 프리셋 칩, 큰 CTA 하나. 수면 카드 안에 목표 시간 칩과 알림 스위치를 함께 넣어 "밤"의 성격을 한 덩어리로 보여 준다. 로그아웃은 헤더 아이콘으로 옮겼다.
+- **기록**: 기본 100P + 광고 부스터 80P 듀얼 게이지, 남은 한도 pill, 주간 상자 카드, 세션 카드(모드 아이콘·상태 pill·큰 시간·포인트 문장), 부스터 CTA 강조.
+- **혜택**: 초대 코드 카드(점선 코드 박스·공유·이번 달/받은 포인트 타일·보낸 초대 목록), 코드 입력 카드, 챌린지 카드(세그먼트 pill·보상 줄·진행률 바·쿠폰 박스).
+- **교환소**: 딥 에메랄드 지갑 카드(잔액·정산 전·교환 비율), 1,000원/5,000원 환산 타일, 상품 카드, 신청 폼, 내역.
+- **로그인·온보딩**: 브랜드 마크와 큰 문장, 라벨이 붙은 입력, 소셜 버튼(Google 로고·Apple 네이티브 버튼 56px), 온보딩은 3개 선택 카드와 단계 표시.
+- 탭바는 `@expo/vector-icons`(Ionicons) 아이콘 + 11px 라벨, 안전영역 높이를 반영한다.
+
+### 4) 검증
+
+`pnpm test` 56건 통과(신규 9건), `npx tsc --noEmit`, `npx expo lint`, `npx expo export --platform web`, `npx expo export --platform ios` 모두 통과.
+
+---
+
 ## 2026-11-18: 4단계 친구 초대 · 브랜드 스폰서 챌린지 구현
 
 2단계 성장 로드맵(2026-11-17 확정)의 두 항목을 `0008_referral_sponsor.sql`과 `혜택` 탭으로 구현했다. 브랜치 `feat/referral-sponsor-challenge`.
