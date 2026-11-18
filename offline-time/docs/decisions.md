@@ -1,6 +1,41 @@
 # 구현 결정
 
+## 2026-11-19: 잠금화면 Live Activity · 충전 근거 최신화
+
+집중·수면 기록이 도는 동안 iOS 잠금화면과 다이내믹 아일랜드에 실제로 흐르는 타이머를 띄우고(`feat/sleep-live-activity-charging`), 수면 카드의 충전 안내를 1탭 시작과 최신 근거 중심으로 다시 만들었다. **DB 스키마·Edge Function은 한 줄도 바꾸지 않았다** — `ended_charging`은 이미 있는 열이고, 앱이 그 값을 더 정확한 시점에 보내도록만 바꿨다.
+
+### 1) Live Activity는 `expo-widgets`(SDK 58 1st-party)로
+
+- 선택지 비교: (a) Swift `ActivityKit` 타겟 + 자체 config plugin, (b) `@bacons/apple-targets` + 서드파티 `expo-live-activity`, (c) `expo-widgets` 58.0.29. (c)를 골랐다. Expo가 SDK 58에 맞춰 배포하는 정식 모듈이고, `createLiveActivity` + `@expo/ui/swift-ui` 컴포넌트만으로 레이아웃을 쓰며, config plugin이 Widget Extension 타겟·App Group·`NSSupportsLiveActivities`·EAS `appExtensions` 항목까지 한 번에 만든다. Swift를 저장소에 넣지 않아 CNG 규칙(`ios/`·`android/` 수기 편집 금지)과 충돌하지 않는다.
+- `app.json`: `ios.infoPlist.NSSupportsLiveActivities = true`, `ios.deploymentTarget = "16.4"`, plugin `["expo-widgets", { bundleIdentifier: "app.offlinetime.mobile.ExpoWidgetsTarget", groupIdentifier: "group.app.offlinetime.mobile", enablePushNotifications: false, frequentUpdates: false }]`. **원격 푸시는 끈다** — 로컬 알림 결정과 같은 이유로 `aps-environment` entitlement를 추가하지 않아 기존 프로비저닝을 건드리지 않는다.
+- **`widgets[]`는 비워 둔다**: Live Activity는 `createLiveActivity`가 런타임에 등록하고 내장 타겟(`WidgetLiveActivity`)이 그린다. 홈 위젯 항목을 넣으면 갤러리용 타겟이 하나 더 생길 뿐이다. `expo prebuild`로 확인: `ios/ExpoWidgetsTarget/index.swift`가 `WidgetLiveActivity()`만 담고, 앱 Info.plist에 `NSSupportsLiveActivities=true`, 양쪽 entitlement에 App Group이 들어간다.
+- **레이아웃은 문자열로 컴파일된다**: `babel-preset-expo`의 widgets plugin이 `'widget'` 지시문이 있는 함수를 소스 문자열로 바꿔 네이티브에 넘기고, 위젯 런타임이 그것을 eval한다. 그래서 레이아웃 안에서는 props와 `@expo/ui/swift-ui` 컴포넌트/모디파이어(전역으로 주입됨)만 쓸 수 있고, 바깥 상수·헬퍼·`Intl`은 쓸 수 없다. 모든 문구·시각 계산은 `src/features/liveActivity/payload.ts`(순수 함수)에서 끝내고 레이아웃은 배치만 한다.
+- **타이머는 SwiftUI가 센다**: `Text(timerInterval:countsDown:)`와 `ProgressView(timerInterval:)`를 쓰므로 앱이 잠들어도 잠금화면 숫자가 흐른다. 집중은 목표까지 카운트다운(+진행 바), 수면은 시작부터 카운트업(+`기상 목표 07:00`까지 남은 시간). JS 타이머로 1초마다 push하지 않는다(백그라운드에서 멈추고 배터리도 낭비).
+- **수면의 기상 목표**: `payload.ts`가 KST 고정 오프셋으로 계산한다. 23:10에 시작한 07:00 목표는 다음날 아침, 00:30에 시작하면 같은 날 아침이다. 자정을 넘겨도 뒤로 가지 않는다.
+- **끝맺음**: 정산 성공 시 `finishSessionActivity`가 `end(after(now+30s), 정산 상태)`로 닫아 30초 동안 `수면 기록 정산 완료 · 총 7시간 20분`을 남긴 뒤 시스템이 치운다. 앱이 죽어 남은 활동은 다음 실행에서 `sessions` 목록이 로드된 뒤 정리한다(로딩 중 빈 목록을 "기록 없음"으로 오해해 밤새 도는 활동을 지우지 않도록 `ready` 플래그를 쓴다).
+- **폴백**: `liveActivity.ts`는 `Platform.OS !== 'ios'`면 즉시 `unsupported`, iOS에서도 `require('expo-widgets')`를 try/catch 안에서만 부른다(Expo Go에는 네이티브 모듈이 없다). 모든 네이티브 호출은 결과 문자열(`started`/`updated`/`ended`/`unsupported`/`error`)로 끝나고 던지지 않는다. 웹은 `liveActivity.web.ts` 스텁. 화면은 지원될 때만 "잠금화면에서도 보여요" 줄을 띄운다.
+
+### 2) 충전은 '조건'이 아니라 '근거'
+
+- **1탭 시작**: 충전 중이고 열린 기록이 없으면 홈 위쪽에 `충전기 연결됨 · 지금 누르면 아침까지 수면 기록이 이어져요` 배너(달 아이콘 + `수면 기록 시작` 버튼)가 뜨고, 누르면 수면 기록이 바로 시작된다. 수면 카드/세그먼트를 고른 상태에서만 보인다.
+- **밤새 값이 낡지 않게**: iOS는 백그라운드에서 배터리 리스너를 멈춘다. 그래서 `useChargeState`가 포그라운드 복귀마다 `getBatteryStateAsync()`를 다시 읽고, **정산 직전에도 한 번 더 읽어**(`endChargingFlag(fresh, observed)`) `ended_charging`을 정한다. 새 판독이 `unknown`일 때만 화면이 마지막으로 본 값을 쓴다(둘 다 모르면 `null` — 꽂혀 있었다고 주장하지 않는다).
+- **기록 중 변화 알림**: 앱이 살아 있는 동안 `charging → unplugged` 전이를 보면 `충전이 풀렸어요. 기록은 그대로 이어지고, 아침 정산에 충전 해제도 함께 남겨요.`를 보여 준다. 권한·배터리 최적화 예외는 여전히 요구하지 않는다.
+- 순수 판정(배너 노출, 문구, 끝 충전값 선택, 전이 판정)은 `src/features/sleep/chargeEvidence.ts`로 분리해 `tests/chargeEvidence.test.mjs`가 검사한다.
+
+### 3) 검증
+
+`pnpm test` 72건 통과(신규 16건: Live Activity 페이로드 12 · 충전 근거 4), `npx tsc --noEmit`, `pnpm lint`, `npx expo config --type public`, `npx expo export --platform web`, `npx expo export --platform ios` 모두 통과. `npx expo prebuild --platform ios --no-install`로 타겟/Info.plist/entitlement/EAS `appExtensions` 생성을 확인하고 생성물은 지웠다(`ios/`는 gitignore).
+
+### 4) 배포 시 확인할 것
+
+- 새 Widget Extension 타겟(`app.offlinetime.mobile.ExpoWidgetsTarget`)과 App Group(`group.app.offlinetime.mobile`)이 Apple Developer 포털에 등록돼야 한다. EAS Build는 `extra.eas.build.experimental.ios.appExtensions`를 읽어 타겟을 빌드하므로, App Store Connect API 키로 capability를 동기화하는 빌드 프로필에서 한 번 새로 만들어야 한다.
+- Live Activity는 **개발 빌드(dev client) 이상**에서만 뜬다(Expo Go 불가). 실기기(iOS 16.2+ 권장, 다이내믹 아일랜드는 iPhone 14 Pro 이상)에서 잠금화면 표시·정산 시 닫힘·미지원 기기 폴백을 확인해야 한다.
+- `expo-battery`는 시뮬레이터에서 상태를 알려 주지 않으므로, 충전 근거는 실기기에서 확인한다.
+
+---
+
 ## 2026-11-19: UI 리뉴얼 · 시작 딜레이 개선 · 로컬 알림
+
 
 사용자가 "디자인이 너무 밤티임"이라고 한 화면 전체와, 집중/수면 시작 시 1~3초 멈춘 듯한 체감을 함께 손봤다. 브랜치 `feat/ux-ui-overhaul-notifications`. **DB 스키마(0001~0008), Edge Function(`session-start`·`session-end`·`ad-reward-ssv`), 0008 미반영 폴백은 한 줄도 바꾸지 않았다.**
 

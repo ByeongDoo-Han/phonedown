@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState, type ComponentProps } from 'react';
+import { useEffect, useRef, useState, type ComponentProps } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { ActionButton } from '@/components/ActionButton';
@@ -11,6 +11,9 @@ import { Notice, Pill } from '@/components/Pill';
 import { Screen } from '@/components/Screen';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { saveSleepGoal, useProfile } from '@/features/auth/useProfile';
+import { finishSessionActivity } from '@/features/liveActivity/liveActivity';
+import { settledActivityProps } from '@/features/liveActivity/payload';
+import { useSessionLiveActivity } from '@/features/liveActivity/useSessionLiveActivity';
 import { cancelFocusComplete, scheduleFocusComplete } from '@/features/notifications/notifications';
 import { useSleepReminders } from '@/features/notifications/useSleepReminders';
 import { listPointTransactions, pointTransactionsQueryKey } from '@/features/points/pointApi';
@@ -20,7 +23,9 @@ import { useFocusTimerStore } from '@/features/session/focusTimerStore';
 import { endSession, listSessions, sessionQueryKey, startSession,
   type FocusMinutes, type TimeSession } from '@/features/session/sessionApi';
 import { describeStartError, optimisticSession } from '@/features/session/optimistic';
-import { chargeFlag, useChargeState } from '@/features/sleep/chargeState';
+import { chargeChangeNotice, chargeTransition, endChargingFlag, sleepChargeNote,
+  sleepStartOffer } from '@/features/sleep/chargeEvidence';
+import { chargeFlag, readChargeState, useChargeState } from '@/features/sleep/chargeState';
 import { BEDTIME_CHOICES, WAKETIME_CHOICES, formatGoalMinutes,
   goalFromProfile, goalMinutes, kstMinutes, preferredMode, type SleepGoal } from '@/features/sleep/sleepGoal';
 import { walletQueryKey } from '@/features/store/storeApi';
@@ -46,12 +51,6 @@ function chargeIcon(state: 'charging' | 'unplugged' | 'unknown'): IconName {
   if (state === 'charging') return 'battery-charging-outline';
   if (state === 'unplugged') return 'battery-dead-outline';
   return 'battery-half-outline';
-}
-
-function chargeCopy(state: 'charging' | 'unplugged' | 'unknown') {
-  if (state === 'charging') return '충전 중 · 화면을 꺼도 시간은 계속 쌓여요';
-  if (state === 'unplugged') return '충전기가 연결되지 않았어요 · 기록은 그대로 이어져요';
-  return '이 기기에서는 충전 상태를 확인할 수 없어요 · 수면 기록은 그대로예요';
 }
 
 export default function Home() {
@@ -86,6 +85,26 @@ export default function Home() {
     queryFn: () => listPointTransactions(userId!),
   });
   const active = sessions.data?.find((item) => item.status === 'open');
+  // The lock screen follows the same row the timer does: it appears with the start, survives a
+  // relaunch mid-night, and takes its settled state from the check-out below.
+  const liveActivityOn = useSessionLiveActivity({
+    ready: sessions.isSuccess,
+    session: active,
+    goal,
+  });
+  const chargingOffer = sleepStartOffer({ charge: chargeState, hasOpenSession: !!active });
+  // iOS suspends the battery listener while the app is backgrounded; the note about a charger
+  // that came loose overnight is built from the transition the app can actually observe.
+  const previousCharge = useRef(chargeState);
+  const [chargeNotice, setChargeNotice] = useState('');
+  useEffect(() => {
+    const transition = active?.mode === 'sleep'
+      ? chargeTransition(previousCharge.current, chargeState)
+      : null;
+    previousCharge.current = chargeState;
+    const notice = chargeChangeNotice(transition);
+    if (notice) setChargeNotice(notice);
+  }, [chargeState, active?.mode]);
   // Before the user picks a mode, the clock decides: a night-time sleep user opens on sleep.
   const chosen = active?.mode ?? modeChoice ?? preferredMode(primary, kstMinutes(), savedGoal);
   const isNight = chosen === 'sleep';
@@ -167,7 +186,12 @@ export default function Home() {
   });
 
   const end = useMutation({
-    mutationFn: (item: TimeSession) => endSession(item.id, chargeFlag(chargeState)),
+    // The charger reading at check-out is the evidence the morning settlement keeps: read the
+    // device again instead of trusting a listener that slept through the night.
+    mutationFn: async (item: TimeSession) => {
+      const fresh = await readChargeState();
+      return endSession(item.id, endChargingFlag(fresh, chargeState));
+    },
     // The goal notification belongs to a session that is still running; ending it clears it
     // right away instead of waiting for the response.
     onMutate: (item) => {
@@ -176,6 +200,16 @@ export default function Home() {
     },
     onSuccess: (result) => {
       setSessions((current) => [result.session, ...current.filter((item) => item.id !== result.session.id)]);
+      finishSessionActivity(settledActivityProps({
+        mode: result.session.mode,
+        serverStartedAt: result.session.server_started_at,
+        plannedMinutes: result.session.planned_minutes,
+        goal: { bedtime: goal.bedtime, waketime: goal.waketime },
+        endedAtMs: result.session.server_ended_at
+          ? Date.parse(result.session.server_ended_at)
+          : Date.now(),
+      }));
+      setChargeNotice('');
       void queryClient.invalidateQueries({ queryKey: pointTransactionsQueryKey(userId) });
       void queryClient.invalidateQueries({ queryKey: walletQueryKey(userId) });
       const amount = result.transaction?.amount ?? 0;
@@ -310,6 +344,24 @@ export default function Home() {
       })}
     </View> : null}
 
+    {!active && isNight && chargingOffer ? <Pressable accessibilityRole="button"
+      accessibilityLabel={`${chargingOffer.title} · ${chargingOffer.action}`}
+      accessibilityHint={chargingOffer.body}
+      onPress={() => { setFeedback(''); setModeChoice('sleep'); start.mutate('sleep'); }}
+      style={({ pressed }) => [styles.chargeOffer, pressed && styles.pressed]}>
+      <View style={styles.chargeOfferIcon}>
+        <Ionicons name="battery-charging" size={20} color={tokens.color.night} />
+      </View>
+      <View style={styles.flex}>
+        <Text style={styles.chargeOfferTitle}>{chargingOffer.title}</Text>
+        <Text style={styles.chargeOfferBody}>{chargingOffer.body}</Text>
+      </View>
+      <View style={styles.chargeOfferAction}>
+        <Text style={styles.chargeOfferActionText}>{chargingOffer.action}</Text>
+        <Ionicons name="chevron-forward" size={13} color={tokens.color.night} />
+      </View>
+    </Pressable> : null}
+
     <View style={[styles.hero, isNight ? styles.heroNight : styles.heroDay]}>
       <View style={styles.heroTop}>
         <View style={[styles.modePill, isNight ? styles.modePillNight : styles.modePillDay]}>
@@ -341,11 +393,18 @@ export default function Home() {
 
       {active?.mode === 'sleep' ? <View style={styles.chargeRow}>
         <Ionicons name={chargeIcon(chargeState)} size={15} color={isNight ? tokens.color.moon : tokens.color.muted} />
-        <Text style={[styles.chargeText, isNight ? styles.nightMuted : undefined]}>{chargeCopy(chargeState)}</Text>
+        <Text style={[styles.chargeText, isNight ? styles.nightMuted : undefined]}>{sleepChargeNote(chargeState, true)}</Text>
+      </View> : null}
+      {active?.mode === 'sleep' && chargeNotice ? <Notice tone="moon" night>{chargeNotice}</Notice> : null}
+      {active && liveActivityOn ? <View style={styles.chargeRow}>
+        <Ionicons name="phone-portrait-outline" size={15} color={isNight ? tokens.color.moon : tokens.color.muted} />
+        <Text style={[styles.chargeText, isNight ? styles.nightMuted : undefined]}>
+          잠금화면과 다이내믹 아일랜드에서도 같은 시간이 보여요
+        </Text>
       </View> : null}
       {!active && isNight ? <View style={styles.chargeRow}>
         <Ionicons name={chargeIcon(chargeState)} size={15} color={tokens.color.moon} />
-        <Text style={[styles.chargeText, styles.nightMuted]}>{chargeCopy(chargeState)}</Text>
+        <Text style={[styles.chargeText, styles.nightMuted]}>{sleepChargeNote(chargeState, false)}</Text>
       </View> : null}
     </View>
 
@@ -504,6 +563,25 @@ const styles = StyleSheet.create({
   segmentItemActive: { backgroundColor: tokens.color.surface, ...tokens.shadow.soft },
   segmentText: { fontSize: 15, fontWeight: '700', color: tokens.color.muted },
   segmentTextActive: { color: tokens.color.ink },
+
+  chargeOffer: {
+    flexDirection: 'row', alignItems: 'center', gap: tokens.space.sm,
+    backgroundColor: tokens.color.nightRaised, borderColor: tokens.color.moonLine, borderWidth: 1,
+    borderRadius: tokens.radius.lg, paddingHorizontal: tokens.space.md, paddingVertical: tokens.space.sm,
+    ...tokens.shadow.lift,
+  },
+  chargeOfferIcon: {
+    width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: tokens.color.moon,
+  },
+  chargeOfferTitle: { fontSize: 15, fontWeight: '800', letterSpacing: -0.2, color: tokens.color.nightInk },
+  chargeOfferBody: { fontSize: 12.5, lineHeight: 18, color: tokens.color.nightMuted, marginTop: 2 },
+  chargeOfferAction: {
+    flexDirection: 'row', alignItems: 'center', gap: 2,
+    backgroundColor: tokens.color.moon, borderRadius: tokens.radius.pill,
+    paddingLeft: 10, paddingRight: 6, paddingVertical: 6,
+  },
+  chargeOfferActionText: { fontSize: 12, fontWeight: '800', color: tokens.color.night },
 
   hero: { borderRadius: tokens.radius.xl, borderWidth: 1, padding: tokens.space.lg, gap: tokens.space.sm },
   heroDay: { backgroundColor: tokens.color.surface, borderColor: tokens.color.line, ...tokens.shadow.card },

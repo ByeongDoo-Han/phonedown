@@ -4,6 +4,7 @@
 
 import * as Battery from 'expo-battery';
 import { useEffect, useState } from 'react';
+import { AppState } from 'react-native';
 
 export type ChargeState = 'charging' | 'unplugged' | 'unknown';
 
@@ -46,16 +47,20 @@ export function useChargeState(): ChargeState {
       // Web and some simulators have no state listener; the one-off read above still applies.
       subscription = null;
     }
+    // iOS suspends the JS listener while the app is backgrounded, so the state it holds after a
+    // night is whatever it last saw. Re-read on every return to the foreground (and the screen
+    // reads once more at check-out, when the evidence is actually written).
+    const appState = AppState.addEventListener('change', (next) => {
+      if (next !== 'active') return;
+      void readChargeState().then((fresh) => {
+        if (active) setState(fresh);
+      });
+    });
     return () => {
       active = false;
       subscription?.remove();
+      appState.remove();
     };
   }, []);
   return state;
-}
-
-export function chargeLabel(state: ChargeState): string {
-  if (state === 'charging') return '충전 연결됨 · 화면을 꺼도 시간은 계속 쌓여요';
-  if (state === 'unplugged') return '충전기가 연결되지 않았어요. 꽂으면 그때부터 기록돼요';
-  return '이 기기에서는 충전 상태를 확인할 수 없어요. 수면 기록은 그대로 할 수 있어요';
 }
