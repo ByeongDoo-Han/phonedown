@@ -12,8 +12,10 @@
       "bundleIdentifier": "app.offlinetime.mobile",
       "usesAppleSignIn": true,
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
-      }
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSSupportsLiveActivities": true
+      },
+      "deploymentTarget": "16.4"
     },
     "android": {
       "package": "app.offlinetime.mobile",
@@ -57,6 +59,15 @@
           "androidAppId": "ca-app-pub-3940256099942544~3347511713",
           "delayAppMeasurementInit": true,
           "userTrackingUsageDescription": "맞춤형 광고를 보여 드리기 위해 사용해요. 허용하지 않아도 광고는 표시되고 적립은 그대로예요."
+        }
+      ],
+      [
+        "expo-widgets",
+        {
+          "bundleIdentifier": "app.offlinetime.mobile.ExpoWidgetsTarget",
+          "groupIdentifier": "group.app.offlinetime.mobile",
+          "enablePushNotifications": false,
+          "frequentUpdates": false
         }
       ]
     ],
