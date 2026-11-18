@@ -40,7 +40,16 @@
           "imageWidth": 76
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "react-native-google-mobile-ads",
+        {
+          "iosAppId": "ca-app-pub-3940256099942544~1458002511",
+          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
+          "delayAppMeasurementInit": true,
+          "userTrackingUsageDescription": "맞춤형 광고를 보여 드리기 위해 사용해요. 허용하지 않아도 광고는 표시되고 적립은 그대로예요."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

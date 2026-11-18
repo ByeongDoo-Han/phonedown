@@ -1,5 +1,31 @@
 # 구현 결정
 
+## 2026-11-18: 광고 표시(AdMob) 연결 · 수면 모드 구현
+
+v0.2의 "앱에 광고가 없다"와 "수면 자동 감지가 없다" 두 구멍을 닫았다. 브랜치 `feat/admob-sleep-mode`.
+
+### 1) 리워드 광고를 실제로 띄운다 (`react-native-google-mobile-ads` 17.4.0)
+
+- **패키지·플러그인**: `react-native-google-mobile-ads@17.4.0`(peer: `react-native >= 0.86`, `expo >= 47` — 현재 0.88.1/SDK 58과 맞음)을 설치하고 `app.json` plugins에 Expo config plugin을 등록했다. `iosAppId`·`androidAppId`는 **Google이 공개한 테스트 앱 ID**를 넣어 두었다(실제 ID는 AdMob 콘솔에서 발급). `userTrackingUsageDescription`은 한국 서비스라도 App Store 심사·ATT 설명에 필요하므로 넣었다.
+- **광고 단위**: `EXPO_PUBLIC_ADMOB_REWARDED_UNIT_ID_IOS`·`_ANDROID`를 먼저 쓰고, 비어 있으면 `TestIds.REWARDED`로 떨어진다. 개발 빌드가 실제 광고를 요청해 정책 위반(무효 트래픽)이 나지 않도록, 테스트 단위를 기본값으로 둥다.
+- **SSV 규격**: 광고 요청에 `serverSideVerificationOptions.userId`(Supabase user id)와 `customData`(`{v:1,kind,session_id?}`)를 실어 보낸다. 콜백 `ad-reward-ssv`가 이미 이 형식을 파싱하므로 서버는 바꾸지 않았다. 앱 쪽 인코더는 `src/features/ads/adPlacement.ts`, 콜백 파서는 `supabase/functions/_shared/adReward.ts`이며 **둘이 같은 JSON을 만드는지 `tests/adPlacement.test.mjs`가 검사**한다.
+- **앱은 포인트를 만들지 않는다**: 앱은 `rewarded`·`dismissed`·`unavailable`만 반환하고, 지급은 서명 검증 뒤 서버 RPC에서만 일어난다. 앱은 `rewarded`에서 원장·잠금·청구 목록을 다시 읽기만 한다(SSV가 늦게 도착할 수 있어 "확인 중" 문구를 유지).
+- **실패 처리**: 플랫폼이 웹·Expo Go·모듈 없음·노필·오류·타임아웃(15초)이면 `unavailable`로 끝내고 기본 적립은 그대로 둔다. 광고를 못 봐서 사용자가 손해를 보는 경로를 만들지 않는다.
+- **알려진 한계**: 앱이 백그라운드면 광고를 미리 로드하지 않으므로 첫 부스터는 로드 시간이 붙는다. 실제 광고 단위·앱 ID로 바꾸기 전에는 수익이 잡히지 않는다(테스트 단위).
+
+### 2) 수면 모드 (`0007_sleep_mode.sql`)
+
+- **규칙**: 기존 `point_rules`의 수면 값(최소 40분·최대 12시간·하루 10시간)을 그대로 쓴다. 단가는 0006의 2P/시간·10분 절사. 7시간 30분 = 15P.
+- **적립은 새로 만들지 않았다**: `apply_earn`이 이미 `mode`별 단가·하루 한도를 읽고 `earn_sleep` 행을 쓰고 있었다. 수면에 필요했던 것은 **종료·유효성 판정**뿐이라 `finish_sleep_session`을 추가하고, `apply_earn`·정산·부스터는 한 줄도 바꾸지 않았다. 그 결과 부스터·주간 상자·주간 기본 상한이 수면에도 자동으로 적용되고, **주간 기본 100P는 수면·집중 합산**이다(수면만으로 채우면 그 뒤 수면도 0P · `weekly_cap_reached`).
+- **세션 하나만 열린다**: `sessions_one_open_per_user` 유니크 인덱스가 수면·집중 동시 기록을 막아 겹침 적립 문제가 생길 수 없다. 세션 시작 함수가 다른 모드가 열려 있으면 409를 준다.
+- **충전은 근거이지 조건이 아니다**: `expo-battery`로 앱이 살아 있는 동안만 상태를 받고(권한·배터리 최적화 예외 요구 없음), `started_charging`·`ended_charging`에 기록한다. 충전 중이 아니어도 수면 기록은 유효하다. 시뮬레이터·웹은 상태를 모르므로 안내 문구만 바뀌고 `null`로 저장된다.
+- **목표 시간**: `users.sleep_bedtime`·`sleep_waketime`(KST 벽시계, `time`)에 둔다. 별도 설정 테이블을 만들지 않았다 — 값이 하나뿐이고 프로필과 함께 읽히기 때문. 목표는 안내용이며 적립 계산에는 쓰지 않는다. 홈은 취침~기상 사이에 수면 카드를 먼저 보여 주고, 그 밖에는 집중을 먼저 보여 준다(사용자가 고른 모드가 우선).
+- **아침 1탭**: 수면 중에는 버튼이 `일어났어요 · 정산하기`로 바뀌고, 한 번 누르면 종료·적립이 한 트랜잭션으로 끝난다. 12시간을 넘은 밤은 12시간에서 자르고 `truncated`로 알려 준다.
+- **마이그레이션 전 호환**: 원격 DB에는 아직 0007(과 0005·0006)이 없다. 새 열을 select하면 오류(42703)가 나므로 앱은 예전 열로 한 번 더 조회한다. 이 폴백이 없으면 지금의 프리뷰 빌드가 홈·기록 화면을 열지 못한다.
+- **테스트**: `tests/sleepMode.sql`(목표 시간 저장, 7시간 30분 = 15P, 하루 10시간 부분 지급·초과 0P, 주간 100P 공유, 40분 미만 거절, 12시간 절단, 재정산 멱등, 집중 20분 유지, 타인 정산 거부), `tests/sleepGoal.test.mjs`(자정 넘는 목표·밤 시간대·모드 선택).
+- **아직 없는 것**: 백그라운드 충전 리시버·포그라운드 서비스·Live Activity(Android/iOS 네이티브 작업), 취침·기상 푸시 알림, 아침 정산 전용 카드 화면(현재는 홈 피드백 + 기록 탭).
+
+---
 ## 2026-11-17 (최종 확정): v0.2 단가 2P/시간 + 주간 상한 분리(기본 100P · 광고 부스터 80P)
 
 같은 날 오전의 1P/시간 안은 "1시간 미만 세션은 0P"(30분 집중 = 0P)라는 한계가 있었고, 30분 프리셋을 살릴 수 없었다. 오후에 사용자가 **2P/시간 + 주간 상한 분리**를 확정해 `feat/ad-revenue-defense`에 반영했다(`0006_weekly_cap_split.sql`).

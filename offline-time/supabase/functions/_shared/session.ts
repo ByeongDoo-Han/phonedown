@@ -1,4 +1,4 @@
-export const SESSION_COLUMNS = 'id,user_id,mode,source,planned_minutes,client_started_at,client_ended_at,server_started_at,server_ended_at,status,invalid_reason';
+export const SESSION_COLUMNS = 'id,user_id,mode,source,planned_minutes,client_started_at,client_ended_at,server_started_at,server_ended_at,status,invalid_reason,started_charging,ended_charging';
 
 export function errorResponse(message: string, status: number): Response {
   return Response.json({ error: message }, { status });

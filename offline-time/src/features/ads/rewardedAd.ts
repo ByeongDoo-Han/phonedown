@@ -1,23 +1,107 @@
-// Rewarded ad placement for the settlement booster and the weekly bonus box.
+// Rewarded ad placement for the settlement booster and the weekly bonus box (iOS/Android).
 //
-// The ad itself comes from AdMob through the native SDK, which this build does not install
-// yet (`react-native-google-mobile-ads` is not a dependency). Until it is, the app cannot
-// show an ad, so every request reports `unavailable` and the user keeps the guaranteed base
-// earn — never a silent loss.
+// The ad comes from AdMob through `react-native-google-mobile-ads`. The reward itself is
+// never granted here: the ad request carries the user id and the placement in AdMob's
+// ServerSideVerificationOptions, and AdMob calls
+//   https://<project>.supabase.co/functions/v1/ad-reward-ssv
+// with a signature. That callback grants the points, so the app cannot mint them.
 //
-// When the SDK is added, load a rewarded ad with
-//   ServerSideVerificationOptions({
-//     userId: <supabase user id>,
-//     customData: JSON.stringify({ v: 1, kind: 'settlement_booster', session_id })  // or { v: 1, kind: 'weekly_box' }
-//   })
-// and set the AdMob SSV callback URL to <project>.supabase.co/functions/v1/ad-reward-ssv.
-// The reward is granted by that callback, never from this code, so only this function
-// changes when the SDK lands.
+// This module only reports what happened on the device: `rewarded` means the user watched
+// far enough for AdMob to fire its reward event and the SSV callback should follow;
+// `dismissed` means the ad closed without the reward; `unavailable` means no ad could be
+// shown (Expo Go, no fill, no network) and the guaranteed base earn stays untouched.
+//
+// Web uses `rewardedAd.web.ts`, which never loads the native package.
 
-export type RewardedAdOutcome = 'rewarded' | 'dismissed' | 'unavailable';
+import { Platform } from 'react-native';
+import type { RewardedAd } from 'react-native-google-mobile-ads';
 
-export const REWARDED_AD_AVAILABLE = false;
+import { adCustomData, type RewardedAdOutcome, type RewardedPlacement } from './adPlacement';
 
-export async function showRewardedAd(): Promise<RewardedAdOutcome> {
-  return 'unavailable';
+export type { RewardedAdOutcome, RewardedPlacement };
+
+type AdsModule = typeof import('react-native-google-mobile-ads');
+
+// How long to wait for a fill before telling the user the ad could not be loaded.
+const LOAD_TIMEOUT_MS = 15_000;
+
+let adsModule: Promise<AdsModule | null> | null = null;
+let initialization: Promise<boolean> | null = null;
+
+function loadAdsModule(): Promise<AdsModule | null> {
+  // Expo Go has no AdMob native module: the import fails quietly instead of breaking the app.
+  if (!adsModule) {
+    adsModule = import('react-native-google-mobile-ads').catch(() => null);
+  }
+  return adsModule;
+}
+
+function rewardedUnitId(ads: AdsModule): string {
+  const configured = Platform.OS === 'ios'
+    ? process.env.EXPO_PUBLIC_ADMOB_REWARDED_UNIT_ID_IOS
+    : process.env.EXPO_PUBLIC_ADMOB_REWARDED_UNIT_ID_ANDROID;
+  const trimmed = configured?.trim();
+  // Google's published test unit keeps development builds honest until a real unit is set.
+  return trimmed && trimmed.length > 0 ? trimmed : ads.TestIds.REWARDED;
+}
+
+async function ensureInitialized(ads: AdsModule): Promise<boolean> {
+  if (!initialization) {
+    initialization = ads.default().initialize().then(() => true).catch(() => false);
+  }
+  return initialization;
+}
+
+export async function showRewardedAd(
+  placement: RewardedPlacement,
+  userId: string | undefined,
+): Promise<RewardedAdOutcome> {
+  if (!userId) return 'unavailable';
+  const ads = await loadAdsModule();
+  if (!ads) return 'unavailable';
+  if (!(await ensureInitialized(ads))) return 'unavailable';
+
+  let rewarded: RewardedAd;
+  try {
+    rewarded = ads.RewardedAd.createForAdRequest(rewardedUnitId(ads), {
+      serverSideVerificationOptions: { userId, customData: adCustomData(placement) },
+    });
+  } catch {
+    return 'unavailable';
+  }
+
+  return new Promise<RewardedAdOutcome>((resolve) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const listeners: (() => void)[] = [];
+
+    const finish = (outcome: RewardedAdOutcome) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      for (const remove of listeners) {
+        try {
+          remove();
+        } catch {
+          // A listener the native side already dropped is not worth reporting.
+        }
+      }
+      resolve(outcome);
+    };
+
+    try {
+      listeners.push(rewarded.addAdEventListener(ads.RewardedAdEventType.LOADED, () => {
+        rewarded.show().catch(() => finish('unavailable'));
+      }));
+      // Fired only when the view was long enough to count; the SSV callback follows.
+      listeners.push(rewarded.addAdEventListener(ads.RewardedAdEventType.EARNED_REWARD,
+        () => finish('rewarded')));
+      listeners.push(rewarded.addAdEventListener(ads.AdEventType.CLOSED, () => finish('dismissed')));
+      listeners.push(rewarded.addAdEventListener(ads.AdEventType.ERROR, () => finish('unavailable')));
+      timer = setTimeout(() => finish('unavailable'), LOAD_TIMEOUT_MS);
+      rewarded.load();
+    } catch {
+      finish('unavailable');
+    }
+  });
 }

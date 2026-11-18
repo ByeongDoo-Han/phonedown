@@ -4,6 +4,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { ActionButton } from '@/components/ActionButton';
 import { Screen } from '@/components/Screen';
+import type { RewardedPlacement } from '@/features/ads/adPlacement';
 import { showRewardedAd } from '@/features/ads/rewardedAd';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { adRewardClaimsQueryKey, listAdRewardClaims,
@@ -39,7 +40,7 @@ function formatDuration(session: TimeSession) {
 function statusText(session: TimeSession) {
   if (session.status === 'open') return '진행 중';
   if (session.status === 'valid') return '기록 완료';
-  if (session.invalid_reason === 'too_short') return '20분 미만';
+  if (session.invalid_reason === 'too_short') return session.mode === 'sleep' ? '40분 미만' : '20분 미만';
   if (session.invalid_reason === 'clock_skew') return '기기 시간 확인 필요';
   return '유효하지 않은 기록';
 }
@@ -72,7 +73,9 @@ function RecordCard({ item, base, booster, multiplier, dailyMax, baseCap, busy, 
       <Text style={[styles.status, item.status === 'invalid' && styles.invalid]}>{statusText(item)}</Text>
     </View>
     <Text style={styles.duration}>{formatDuration(item)}</Text>
-    <Text style={styles.body}>{formatDate(item.server_started_at)} 시작</Text>
+    <Text style={styles.body}>{formatDate(item.server_started_at)} 시작{item.mode === 'sleep' && item.started_charging
+      ? ' · 충전 연결 상태로 시작'
+      : ''}</Text>
     {basePointText(base, baseCap) ? <Text style={styles.points}>{basePointText(base, baseCap)}</Text> : null}
     {booster.status === 'claimed'
       ? <Text style={styles.points}>+{booster.bonusPoints}P 광고 부스터 적용</Text>
@@ -149,7 +152,7 @@ export default function Records() {
   });
 
   const boost = useMutation({
-    mutationFn: () => showRewardedAd(),
+    mutationFn: (placement: RewardedPlacement) => showRewardedAd(placement, userId),
     onSuccess: (outcome) => {
       setNotice(outcome === 'unavailable'
         ? '지금은 광고를 불러올 수 없어요. 기본 적립은 그대로 유지됩니다.'
@@ -167,7 +170,7 @@ export default function Records() {
 
   return <Screen>
     <Text style={styles.title}>기록</Text>
-    <Text style={styles.subtitle}>기본 1시간 = {pointRules.earn.focus_per_hour}P · 30분 = 1P · 광고를 보면 {ads.booster_multiplier}배</Text>
+    <Text style={styles.subtitle}>수면·집중 기본 1시간 = {pointRules.earn.focus_per_hour}P · 30분 = 1P · 광고를 보면 {ads.booster_multiplier}배</Text>
     <View style={styles.capCard}>
       <View style={styles.row}>
         <Text style={styles.heading}>이번 주 적립</Text>
@@ -192,7 +195,7 @@ export default function Records() {
     </View> : null}
     {sessions.data?.length === 0 ? <View style={styles.card}>
       <Text style={styles.heading}>아직 기록이 없어요</Text>
-      <Text style={styles.body}>홈에서 집중 시간을 시작해 보세요.</Text>
+      <Text style={styles.body}>홈에서 수면이나 집중 기록을 시작해 보세요.</Text>
     </View> : null}
     {points.isError || claims.isError ? <Text style={styles.body}>포인트 기록을 불러오지 못했습니다.</Text> : null}
     {notice ? <Text accessibilityRole="alert" style={styles.notice}>{notice}</Text> : null}
@@ -202,7 +205,7 @@ export default function Records() {
         ? `${box.weekId} 정산 상자를 열었어요. +${box.bonusPoints}P가 적립 예정이에요.`
         : `${box.weekId} 정산을 마쳤어요. 광고 1편을 보면 ${box.bonusPoints}P를 더 드려요.`}</Text>
       {box.status === 'ready' ? <ActionButton label={`광고 보고 ${box.bonusPoints}P 받기`}
-        disabled={boost.isPending} onPress={() => { setNotice(''); boost.mutate(); }} /> : null}
+        disabled={boost.isPending} onPress={() => { setNotice(''); boost.mutate({ kind: 'weekly_box' }); }} /> : null}
     </View> : null}
     {sessions.data?.map((item) => {
       const base = baseBySession.get(item.id);
@@ -220,7 +223,7 @@ export default function Records() {
         multiplier={ads.booster_multiplier} dailyMax={ads.daily_max}
         baseCap={pointRules.weekly.base_points}
         busy={boost.isPending}
-        onBoost={() => { setNotice(''); boost.mutate(); }} />;
+        onBoost={() => { setNotice(''); boost.mutate({ kind: 'settlement_booster', sessionId: item.id }); }} />;
     })}
   </Screen>;
 }
