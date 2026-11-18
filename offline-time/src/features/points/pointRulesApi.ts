@@ -33,12 +33,19 @@ export type RedemptionRules = {
   step_points: number;
 };
 
+export type ReferralRules = {
+  points: number;
+  required_days: number;
+  monthly_max: number;
+};
+
 export type PointRules = {
   currency: CurrencyRules;
   earn: EarnRules;
   weekly: WeeklyCapRules;
   ads: AdsRules;
   redemption: RedemptionRules;
+  referral: ReferralRules;
 };
 
 export const DEFAULT_POINT_RULES: PointRules = {
@@ -54,6 +61,7 @@ export const DEFAULT_POINT_RULES: PointRules = {
     redeem_interstitial: false,
   },
   redemption: { minimum_points: 1400, step_points: 100 },
+  referral: { points: 300, required_days: 3, monthly_max: 5 },
 };
 
 export const pointRulesQueryKey = ['pointRules'] as const;
@@ -77,6 +85,7 @@ export function toPointRules(rows: { key: string; value: unknown }[]): PointRule
   const weekly = byKey.get('weekly_cap');
   const ads = byKey.get('ads');
   const redemption = byKey.get('redemption');
+  const referral = byKey.get('referral');
   return {
     currency: {
       point_to_krw: readNumber(currency, 'point_to_krw', DEFAULT_POINT_RULES.currency.point_to_krw),
@@ -110,6 +119,12 @@ export function toPointRules(rows: { key: string; value: unknown }[]): PointRule
         DEFAULT_POINT_RULES.redemption.minimum_points),
       step_points: readNumber(redemption, 'step_points', DEFAULT_POINT_RULES.redemption.step_points),
     },
+    referral: {
+      points: readNumber(referral, 'points', DEFAULT_POINT_RULES.referral.points),
+      required_days: readNumber(referral, 'required_days',
+        DEFAULT_POINT_RULES.referral.required_days),
+      monthly_max: readNumber(referral, 'monthly_max', DEFAULT_POINT_RULES.referral.monthly_max),
+    },
   };
 }
 
@@ -117,7 +132,7 @@ export async function getPointRules(): Promise<PointRules> {
   if (!supabase) return DEFAULT_POINT_RULES;
   const { data, error } = await supabase.from('point_rules')
     .select('key,value')
-    .in('key', ['currency', 'earn_rate', 'weekly_cap', 'ads', 'redemption']);
+    .in('key', ['currency', 'earn_rate', 'weekly_cap', 'ads', 'redemption', 'referral']);
   if (error) throw error;
   return toPointRules((data ?? []) as { key: string; value: unknown }[]);
 }

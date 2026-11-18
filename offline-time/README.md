@@ -1,6 +1,6 @@
 # 오프라인 타임
 
-Expo SDK 58 모바일 앱과 Supabase 데이터베이스의 초기 구현입니다. 가입, 로그인, 주력 시간 선택, 수동 집중·수면 기록 시작·종료, 최근 기록 조회, 유효한 기록의 포인트 적립, 지난주 포인트 정산, 교환 신청·이력이 동작합니다. 포인트는 기본 적립(1시간 = 2P, 주 100P까지)과 광고 부스터(2배, 주 80P까지)·주간 보너스 상자로 나뉘며, 광고 보상은 AdMob SSV 콜백으로만 지급됩니다. 수면은 충전 상태를 확인해 시작하고 아침에 한 번 눌러 정산하며, 충전 이벤트는 앱이 살아 있는 동안만 받습니다(백그라운드 자동 감지·Live Activity는 아직 없음). 교환 상품 발송은 아직 동작하지 않습니다.
+Expo SDK 58 모바일 앱과 Supabase 데이터베이스의 초기 구현입니다. 가입, 로그인, 주력 시간 선택, 수동 집중·수면 기록 시작·종료, 최근 기록 조회, 유효한 기록의 포인트 적립, 지난주 포인트 정산, 교환 신청·이력이 동작합니다. 포인트는 기본 적립(1시간 = 2P, 주 100P까지)과 광고 부스터(2배, 주 80P까지)·주간 보너스 상자로 나뉘며, 광고 보상은 AdMob SSV 콜백으로만 지급됩니다. 수면은 충전 상태를 확인해 시작하고 아침에 한 번 눌러 정산하며, 충전 이벤트는 앱이 살아 있는 동안만 받습니다(백그라운드 자동 감지·Live Activity는 아직 없음). `혜택` 탭에서 친구 초대(3일 연속 정산 시 양쪽 +300P, 월 5회)와 브랜드 스폰서 챌린지(달성 시 브랜드 쿠폰)를 쓸 수 있습니다 — 챌린지는 제휴 계약 전이라 비활성 씨앗만 있고, 쿠폰 발송은 운영자 몫입니다. 교환 상품 발송도 아직 동작하지 않습니다.
 
 연결된 원격 `apptech` 프로젝트(`uhisjleftevizjfudeip`)는 PostgreSQL 17.11입니다. 초기 기획의 PostgreSQL 15 고정 조건은 2026-11-16 사용자 선택에 따라 이 프로젝트에서 PostgreSQL 17로 변경했습니다. `0001_init.sql`과 앱 복귀 URL 설정은 원격에 적용됐습니다.
 
@@ -75,6 +75,35 @@ Google 로그인은 Expo Go에서 복귀 URL을 테스트할 수 없습니다. i
 - 광고 로드 15초 타임아웃, 웹·Expo Go·모듈 없음·노필 모두 `unavailable`로 처리해 기본 적립은 그대로 유지됩니다.
 - **AdMob 콘솔에 꼭 해야 할 일**: 앱 등록 → 광고 단위(리워드) 생성 → 광고 단위 ID를 위 환경변수에 넣기 → 광고 단위의 SSV 콜백 URL을 `https://uhisjleftevizjfudeip.supabase.co/functions/v1/ad-reward-ssv`로 등록. `app.json`의 앱 ID도 실제 AdMob 앱 ID로 바꿔야 수익이 잡힙니다.
 
+## 혜택 (친구 초대 · 브랜드 스폰서 챌린지)
+
+`0008_referral_sponsor.sql`이 `혜택` 탭의 두 기능을 만듭니다. 둘 다 포인트를 만드는 경로는 서버뿐입니다.
+
+### 친구 초대
+
+- **내 코드**: 계정마다 하나, 8자리 대문자 16진수(0/O·1/I 혼동 없음). 서버가 발급하고 사용자가 바꿀 수 없습니다(트리거 보호).
+- **보상**: 친구가 코드를 넣고 **3일 연속** 기록을 정산하면 양쪽 **+300P**. 초대한 사람은 **달마다 5회(1,500P)** 까지이고, 한도를 채운 뒤에도 친구 몫 300P는 그대로 지급합니다.
+- **조건**: 초대받는 계정은 포인트 기록이 없어야 하고(`새 계정만`), 계정당 한 번만 초대받을 수 있으며, 내 코드와 서로 초대하는 고리는 거절합니다.
+- **3일의 정의**: 유효 세션이 **끝난 KST 날짜**의 연속 구간입니다. 오늘 또는 어제까지 이어진 구간만 인정해 지난주 기록으로 소급 수령하지 못하게 했고, 밤 수면은 일어난 날에 귀속됩니다.
+- **지급·갱신**: `bonus` 거래 2건, `bonus_pool = 'referral'`. 세션을 정산할 때 `session-end`가 `refresh_growth_progress`를 불러 진행과 지급을 한 번에 처리합니다.
+
+### 브랜드 스폰서 챌린지
+
+- **조건**: 모드(수면·집중), 하루 최소 시간, 목표 일수, 창(일수), 연속 여부. 예: `7일 안에 수면 7시간 이상을 5일 연속 기록`.
+- **진행**: 참여 시점부터 창 안에서 그 모드 유효 세션이 하루 기준을 넘긴 날을 셉니다(연속 조건이면 가장 긴 구간). 참여 전 기록으로는 소급 달성되지 않습니다.
+- **보상**: 참여 1건당 브랜드 쿠폰 1장(`SP-XXXXXXXXXX`). `delivery_status = 'pending'`으로 발급되고 실제 발송·재발송은 브랜드/운영자 몫입니다. **포인트 원장과 분리**되어 쿠폰 발급은 `point_transactions`에 행을 만들지 않습니다.
+- **세그먼트**: `sleep_recovery`(수면·회복) / `focus_growth`(집중·자기개발)는 온보딩 주력 모드에 맞춘 노출·카피 기준입니다. 참여 자체를 막지는 않습니다(`both` 사용자 보호).
+- **씨앗**: 제휴 계약과 쿠폰 발송 수단이 없으므로 3건 모두 `active = false`입니다. 테스트로 열어 볼 때만 아래를 실행하세요(계약 없이 열면 지킬 수 없는 쿠폰을 약속하게 됩니다).
+
+```sh
+npx supabase db query --remote=uhisjleftevizjfudeip \
+  --sql "update public.sponsor_challenges set active = true where title = '7시간 수면 5일'" --yes
+```
+
+### 보너스 풀 분리
+
+초대·챌린지 보너스는 광고 부스터 주 80P 풀을 쓰지 않습니다. `point_transactions.bonus_pool`이 `ad` / `referral` / `sponsor_challenge`를 구분하고, `claim_ad_booster`·`claim_weekly_box`는 `bonus_pool = 'ad'`만 셉니다. `kind = 'bonus'`인 행은 `bonus_pool`이 반드시 있어야 하고(CHECK), append-only 트리거가 이 열의 변경도 막습니다.
+
 현재 발송 제휴사·쿠폰 재고가 없어 **운영 활성 상품은 0건**입니다. 상품 발송 수단과 재고를 마련한 뒤에만 실제 상품을 활성화해야 합니다. 교환 신청이 접수되더라도 외부 발송은 자동화되지 않았으며, 운영자가 발송 결과를 확인하고 상태를 처리해야 합니다.
 
 ```sh
@@ -88,11 +117,13 @@ npx supabase db query --remote=uhisjleftevizjfudeip --file tests/redemptionRls.s
 npx supabase db query --remote=uhisjleftevizjfudeip --file tests/adBooster.sql --yes
 npx supabase db query --remote=uhisjleftevizjfudeip --file tests/weeklyCaps.sql --yes
 npx supabase db query --remote=uhisjleftevizjfudeip --file tests/sleepMode.sql --yes
+npx supabase db query --remote=uhisjleftevizjfudeip --file tests/referral.sql --yes
+npx supabase db query --remote=uhisjleftevizjfudeip --file tests/sponsorChallenge.sql --yes
 ```
 
 `ad-reward-ssv`는 AdMob 콘솔의 SSV 콜백 URL(`https://<project>.supabase.co/functions/v1/ad-reward-ssv`)로 등록하고 JWT 검증을 끄고 배포해야 합니다(`verify_jwt = false`). 나머지 함수는 JWT 검증이 켜져 있습니다.
 
-**적용 순서**: DB를 먼저 올리고 함수를 배포합니다. 새 `session-start`·`session-end`는 0007이 더한 `started_charging`·`ended_charging` 열을 쓰기 때문에, 순서가 바뀌면 수면 기록만 실패합니다(집중 기록은 그대로 동작). 앱은 열이 없는 동안 예전 열로 다시 조회해 화면이 깨지지 않습니다.
+**적용 순서**: DB를 먼저 올리고 함수를 배포합니다. 새 `session-start`·`session-end`는 0007이 더한 `started_charging`·`ended_charging` 열을 쓰기 때문에, 순서가 바뀌면 수면 기록만 실패합니다(집중 기록은 그대로 동작). 앱은 열이 없는 동안 예전 열로 다시 조회해 화면이 깨지지 않습니다. 0008의 `refresh_growth_progress`도 같은 원칙입니다 — 함수가 없으면 `session-end`는 경고만 남기고 정산을 마치므로, 순서가 바뀌어도 기록·포인트는 안전하고 초대 진행만 늦어집니다.
 
 `supabase/config.toml`에는 로컬 개발용 Auth 기본값도 들어 있습니다. 전체 파일을 `supabase config push`로 원격에 적용하면 이메일 확인 같은 원격 설정이 바뀔 수 있으므로, 원격 설정은 변경할 항목만 지정해 적용합니다.
 
