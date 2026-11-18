@@ -1,8 +1,12 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ComponentProps } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { ActionButton } from '@/components/ActionButton';
+import { Card, SectionHeader } from '@/components/Card';
+import { LabeledBar } from '@/components/ProgressBar';
+import { Notice, Pill, type PillTone } from '@/components/Pill';
 import { Screen } from '@/components/Screen';
 import type { RewardedPlacement } from '@/features/ads/adPlacement';
 import { showRewardedAd } from '@/features/ads/rewardedAd';
@@ -21,15 +25,12 @@ import { listSessions, sessionQueryKey, type TimeSession } from '@/features/sess
 import { walletQueryKey } from '@/features/store/storeApi';
 import { tokens } from '@/theme/tokens';
 
+type IconName = ComponentProps<typeof Ionicons>['name'];
+
 function formatDate(value: string) {
   return new Date(value).toLocaleString('ko-KR', {
     timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit',
   });
-}
-
-function percent(value: number, cap: number) {
-  if (cap <= 0) return 0;
-  return Math.min(100, Math.max(0, Math.round((value / cap) * 100)));
 }
 
 function formatDuration(session: TimeSession) {
@@ -45,6 +46,12 @@ function statusText(session: TimeSession) {
   if (session.invalid_reason === 'too_short') return session.mode === 'sleep' ? '40분 미만' : '20분 미만';
   if (session.invalid_reason === 'clock_skew') return '기기 시간 확인 필요';
   return '유효하지 않은 기록';
+}
+
+function statusTone(session: TimeSession): PillTone {
+  if (session.status === 'valid') return 'accent';
+  if (session.status === 'open') return 'warning';
+  return 'danger';
 }
 
 function basePointText(transaction: PointTransaction | undefined, baseCap: number) {
@@ -71,30 +78,47 @@ function RecordCard({ item, base, booster, multiplier, dailyMax, baseCap, busy, 
   pending: boolean;
   onBoost: () => void;
 }) {
-  return <View style={styles.card}>
-    <View style={styles.row}>
-      <Text style={styles.heading}>{item.mode === 'focus' ? '집중' : '수면'}</Text>
-      <Text style={[styles.status, item.status === 'invalid' && styles.invalid]}>{statusText(item)}</Text>
+  const sleep = item.mode === 'sleep';
+  const icon: IconName = sleep ? 'moon' : 'flash';
+  return <Card style={styles.recordCard}>
+    <View style={styles.recordHead}>
+      <View style={styles.recordLeft}>
+        <View style={[styles.modeIcon, sleep ? styles.modeIconNight : styles.modeIconDay]}>
+          <Ionicons name={icon} size={17} color={sleep ? tokens.color.moon : tokens.color.accent} />
+        </View>
+        <View style={styles.recordIdentity}>
+          <Text style={styles.recordMode}>{sleep ? '수면' : '집중'}</Text>
+          <Text style={styles.recordDate}>{formatDate(item.server_started_at)} 시작</Text>
+        </View>
+      </View>
+      <Pill label={statusText(item)} tone={statusTone(item)} />
     </View>
-    <Text style={styles.duration}>{formatDuration(item)}</Text>
-    <Text style={styles.body}>{formatDate(item.server_started_at)} 시작{item.mode === 'sleep' && item.started_charging
-      ? ' · 충전 연결 상태로 시작'
-      : ''}</Text>
-    {basePointText(base, baseCap) ? <Text style={styles.points}>{basePointText(base, baseCap)}</Text> : null}
-    {booster.status === 'claimed'
-      ? <Text style={styles.points}>+{booster.bonusPoints}P 광고 부스터 적용</Text>
-      : null}
+
+    <View style={styles.recordBody}>
+      <Text style={[styles.recordDuration, item.status === 'invalid' && styles.recordDurationMuted]}>
+        {formatDuration(item)}
+      </Text>
+      {basePointText(base, baseCap)
+        ? <Text style={styles.recordPoints}>{basePointText(base, baseCap)}</Text>
+        : null}
+      {booster.status === 'claimed'
+        ? <Text style={styles.recordBoost}>+{booster.bonusPoints}P 광고 부스터 적용</Text>
+        : null}
+      {sleep && item.started_charging ? <Text style={styles.recordMeta}>충전 연결 상태로 시작</Text> : null}
+    </View>
+
     {booster.status === 'ready'
       ? <ActionButton
         label={pending
           ? adRewardPendingLabel({ kind: 'settlement_booster', sessionId: item.id })
           : `광고 보고 ${multiplier}배 받기 (+${booster.bonusPoints}P)`}
+        icon={<Ionicons name="play-circle-outline" size={19} color={tokens.color.onAccent} />}
         disabled={busy || pending} onPress={onBoost} />
       : null}
     {booster.status === 'limit'
-      ? <Text style={styles.body}>오늘 부스터 {dailyMax}회를 모두 받았어요. 다음 기록부터 다시 받을 수 있어요.</Text>
+      ? <Text style={styles.recordMeta}>오늘 부스터 {dailyMax}회를 모두 받았어요. 다음 기록부터 다시 받을 수 있어요.</Text>
       : null}
-  </View>;
+  </Card>;
 }
 
 export default function Records() {
@@ -102,6 +126,7 @@ export default function Records() {
   const userId = session?.user.id;
   const queryClient = useQueryClient();
   const [notice, setNotice] = useState('');
+  const [noticeTone, setNoticeTone] = useState<'accent' | 'danger'>('accent');
   // 광고는 봤지만 SSV 콜백이 아직 서버에 닿지 않은 대상. 이 동안 해당 버튼만 잠근다.
   const [pendingAds, setPendingAds] = useState<RewardedPlacement[]>([]);
   const sessions = useQuery({
@@ -166,6 +191,7 @@ export default function Records() {
     mutationFn: (placement: RewardedPlacement) => showRewardedAd(placement, userId),
     onSuccess: (outcome, placement) => {
       if (outcome !== 'rewarded') {
+        setNoticeTone(outcome === 'unavailable' ? 'danger' : 'accent');
         setNotice(outcome === 'unavailable'
           ? '지금은 광고를 불러올 수 없어요. 기본 적립은 그대로 유지됩니다.'
           : '광고를 끝까지 봐야 부스터가 적용돼요.');
@@ -175,12 +201,16 @@ export default function Records() {
       setPendingAds((current) => current.some((item) => adRewardPendingKey(item) === key)
         ? current
         : [...current, placement]);
+      setNoticeTone('accent');
       setNotice(AD_REWARD_PENDING_NOTICE);
       void queryClient.invalidateQueries({ queryKey: adRewardClaimsQueryKey(userId) });
       void queryClient.invalidateQueries({ queryKey: pointTransactionsQueryKey(userId) });
       void queryClient.invalidateQueries({ queryKey: walletQueryKey(userId) });
     },
-    onError: () => setNotice('광고를 불러오지 못했어요. 기본 적립은 그대로 유지됩니다.'),
+    onError: () => {
+      setNoticeTone('danger');
+      setNotice('광고를 불러오지 못했어요. 기본 적립은 그대로 유지됩니다.');
+    },
   });
 
   // 주간 상자는 정산을 마친 주에만 열린다. 그 주의 주장만 이번 시청과 견줄 수 있다.
@@ -207,9 +237,11 @@ export default function Records() {
         const key = adRewardPendingKey(placement);
         setPendingAds((current) => current.filter((item) => adRewardPendingKey(item) !== key));
         if (result.status === 'denied') {
+          setNoticeTone('danger');
           setNotice(adRewardDeniedNotice(result.reason));
         } else if (result.status === 'timeout') {
           // 테스트 광고처럼 SSV가 오지 않아도 버튼을 풀고 안내한다.
+          setNoticeTone('accent');
           setNotice(AD_REWARD_WAIT_NOTICE);
         } else {
           setNotice((current) => (current === AD_REWARD_PENDING_NOTICE ? '' : current));
@@ -222,50 +254,80 @@ export default function Records() {
   }, [pendingAds, queryClient, settledWeekId, userId]);
 
   const boxPending = pendingAds.some((placement) => placement.kind === 'weekly_box');
+  const settledBase = allowance.baseRemaining === 0;
 
   return <Screen>
-    <Text style={styles.title}>기록</Text>
-    <Text style={styles.subtitle}>수면·집중 기본 1시간 = {pointRules.earn.focus_per_hour}P · 30분 = 1P · 광고를 보면 {ads.booster_multiplier}배</Text>
-    <View style={styles.capCard}>
-      <View style={styles.row}>
-        <Text style={styles.heading}>이번 주 적립</Text>
-        <Text style={styles.points}>{allowance.totalEarned}P / {allowance.totalCap}P</Text>
-      </View>
-      <Text style={styles.body}>기본 적립 {allowance.baseEarned}P / {pointRules.weekly.base_points}P</Text>
-      <View style={styles.track}>
-        <View style={[styles.fill, { width: `${percent(allowance.baseEarned, pointRules.weekly.base_points)}%` }]} />
-      </View>
-      <Text style={styles.body}>광고 부스터 {allowance.bonusEarned}P / {pointRules.weekly.booster_points}P</Text>
-      <View style={styles.track}>
-        <View style={[styles.fill, styles.boosterFill, { width: `${percent(allowance.bonusEarned, pointRules.weekly.booster_points)}%` }]} />
-      </View>
-      {allowance.baseRemaining === 0
-        ? <Text style={styles.body}>이번 주 기본 적립을 모두 채웠어요. 기록은 그대로 남고 다음 주에 다시 쌓여요.</Text>
-        : <Text style={styles.body}>기본 한도까지 {allowance.baseRemaining}P 남았어요.</Text>}
+    <View style={styles.header}>
+      <Text style={styles.eyebrow}>기록</Text>
+      <Text style={styles.title}>이번 주 적립과 지난 기록</Text>
+      <Text style={styles.subtitle}>수면·집중 기본 1시간 = {pointRules.earn.focus_per_hour}P ·
+        {' '}30분 = 1P · 광고를 보면 {ads.booster_multiplier}배</Text>
     </View>
-    {sessions.isPending ? <ActivityIndicator color={tokens.color.accent} /> : null}
-    {sessions.isError ? <View style={styles.card}>
-      <Text style={styles.body}>기록을 불러오지 못했습니다.</Text>
-      <ActionButton label="다시 불러오기" secondary onPress={() => { void sessions.refetch(); }} />
-    </View> : null}
-    {sessions.data?.length === 0 ? <View style={styles.card}>
-      <Text style={styles.heading}>아직 기록이 없어요</Text>
-      <Text style={styles.body}>홈에서 수면이나 집중 기록을 시작해 보세요.</Text>
-    </View> : null}
-    {points.isError || claims.isError ? <Text style={styles.body}>포인트 기록을 불러오지 못했습니다.</Text> : null}
-    {notice ? <Text accessibilityRole="alert" style={styles.notice}>{notice}</Text> : null}
-    {box.status !== 'disabled' && box.status !== 'locked' ? <View style={styles.boxCard}>
-      <Text style={styles.heading}>주간 보너스 상자</Text>
-      <Text style={styles.body}>{box.status === 'claimed'
-        ? `${box.weekId} 정산 상자를 열었어요. +${box.bonusPoints}P가 적립 예정이에요.`
-        : `${box.weekId} 정산을 마쳤어요. 광고 1편을 보면 ${box.bonusPoints}P를 더 드려요.`}</Text>
+
+    <Card style={styles.gaugeCard}>
+      <View style={styles.gaugeHead}>
+        <View style={styles.flex}>
+          <Text style={styles.gaugeLabel}>이번 주 적립</Text>
+          <Text style={styles.gaugeValue}>
+            {allowance.totalEarned}<Text style={styles.gaugeUnit}>P</Text>
+            <Text style={styles.gaugeCap}>  /  {allowance.totalCap}P</Text>
+          </Text>
+        </View>
+        <Pill label={settledBase ? '기본 한도 도달' : `${allowance.baseRemaining}P 남음`}
+          tone={settledBase ? 'success' : 'accent'} />
+      </View>
+
+      <View style={styles.gaugeBars}>
+        <LabeledBar label="기본 적립" value={allowance.baseEarned} cap={pointRules.weekly.base_points}
+          color={tokens.color.accent} suffix="P" />
+        <View style={styles.gaugeDivider} />
+        <LabeledBar label="광고 부스터" value={allowance.bonusEarned} cap={pointRules.weekly.booster_points}
+          color={tokens.color.indigo} suffix="P" />
+      </View>
+
+      <Text style={styles.gaugeNote}>{settledBase
+        ? '이번 주 기본 적립을 모두 채웠어요. 기록은 그대로 남고 다음 주에 다시 쌓여요.'
+        : `기본 한도까지 ${allowance.baseRemaining}P 남았어요. 부스터는 ${allowance.bonusRemaining}P 남았어요.`}</Text>
+    </Card>
+
+    {box.status !== 'disabled' && box.status !== 'locked' ? <Card tone="accent" style={styles.boxCard}>
+      <View style={styles.boxHead}>
+        <View style={styles.boxIcon}><Ionicons name="gift" size={18} color={tokens.color.accent} /></View>
+        <View style={styles.flex}>
+          <Text style={styles.boxTitle}>주간 보너스 상자</Text>
+          <Text style={styles.boxBody}>{box.status === 'claimed'
+            ? `${box.weekId} 정산 상자를 열었어요. +${box.bonusPoints}P가 적립 예정이에요.`
+            : `${box.weekId} 정산을 마쳤어요. 광고 1편을 보면 ${box.bonusPoints}P를 더 드려요.`}</Text>
+        </View>
+      </View>
       {box.status === 'ready' ? <ActionButton
         label={boxPending
           ? adRewardPendingLabel({ kind: 'weekly_box' })
           : `광고 보고 ${box.bonusPoints}P 받기`}
+        icon={<Ionicons name="play-circle-outline" size={19} color={tokens.color.onAccent} />}
         disabled={boost.isPending || boxPending}
         onPress={() => { setNotice(''); boost.mutate({ kind: 'weekly_box' }); }} /> : null}
+    </Card> : null}
+
+    {notice ? <Notice tone={noticeTone}>{notice}</Notice> : null}
+    {points.isError || claims.isError ? <Notice tone="danger">포인트 기록을 불러오지 못했습니다.</Notice> : null}
+
+    <SectionHeader title="최근 기록" caption="기록을 마친 뒤 광고 1편으로 적립을 2배로" />
+
+    {sessions.isPending ? <View style={styles.loadingRow}>
+      <ActivityIndicator color={tokens.color.accent} />
+      <Text style={styles.hint}>기록을 불러오는 중이에요</Text>
     </View> : null}
+    {sessions.isError ? <Card>
+      <Text style={styles.emptyTitle}>기록을 불러오지 못했어요</Text>
+      <ActionButton label="다시 불러오기" variant="secondary" onPress={() => { void sessions.refetch(); }} />
+    </Card> : null}
+    {sessions.data?.length === 0 ? <Card style={styles.emptyCard}>
+      <View style={styles.emptyIcon}><Ionicons name="moon-outline" size={22} color={tokens.color.subtle} /></View>
+      <Text style={styles.emptyTitle}>아직 기록이 없어요</Text>
+      <Text style={styles.emptyBody}>홈에서 수면이나 집중 기록을 시작해 보세요.</Text>
+    </Card> : null}
+
     {sessions.data?.map((item) => {
       const base = baseBySession.get(item.id);
       const claim = boosterBySession.get(item.id);
@@ -291,20 +353,50 @@ export default function Records() {
 }
 
 const styles = StyleSheet.create({
-  title: { fontSize: 30, fontWeight: '800', color: tokens.color.ink, marginTop: 20 },
-  subtitle: { color: tokens.color.muted, fontSize: 15 },
-  card: { backgroundColor: tokens.color.surface, borderRadius: tokens.radius.lg, padding: 24, gap: 12 },
-  capCard: { backgroundColor: tokens.color.surface, borderRadius: tokens.radius.lg, padding: 24, gap: 8 },
-  track: { height: 8, borderRadius: 4, backgroundColor: tokens.color.line, overflow: 'hidden' },
-  fill: { height: '100%', borderRadius: 4, backgroundColor: tokens.color.accent },
-  boosterFill: { backgroundColor: tokens.color.ink },
-  boxCard: { backgroundColor: tokens.color.accentSoft, borderRadius: tokens.radius.lg, padding: 24, gap: 12 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  heading: { fontSize: 20, fontWeight: '700', color: tokens.color.ink },
-  status: { color: tokens.color.accent, fontSize: 14, fontWeight: '700' },
-  invalid: { color: tokens.color.danger },
-  duration: { color: tokens.color.ink, fontSize: 28, fontWeight: '800' },
-  body: { fontSize: 15, lineHeight: 23, color: tokens.color.muted },
-  points: { fontSize: 16, fontWeight: '700', color: tokens.color.accent },
-  notice: { color: tokens.color.accent, fontSize: 14, lineHeight: 21 },
+  header: { gap: 3, marginTop: tokens.space.xs },
+  eyebrow: { fontSize: 12, fontWeight: '800', letterSpacing: 1.2, color: tokens.color.accent },
+  title: { fontSize: 26, fontWeight: '800', letterSpacing: -0.5, color: tokens.color.ink },
+  subtitle: { fontSize: 13, lineHeight: 19, color: tokens.color.muted },
+  flex: { flex: 1 },
+
+  gaugeCard: { gap: tokens.space.md },
+  gaugeHead: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: tokens.space.sm },
+  gaugeLabel: { fontSize: 13, fontWeight: '600', color: tokens.color.muted },
+  gaugeValue: { fontSize: 34, fontWeight: '800', letterSpacing: -0.8, color: tokens.color.ink, ...tokens.numeric },
+  gaugeUnit: { fontSize: 18, fontWeight: '800', color: tokens.color.inkSecondary },
+  gaugeCap: { fontSize: 14, fontWeight: '600', color: tokens.color.subtle },
+  gaugeBars: { gap: tokens.space.sm },
+  gaugeDivider: { height: 1, backgroundColor: tokens.color.line },
+  gaugeNote: { fontSize: 12.5, lineHeight: 19, color: tokens.color.muted },
+
+  boxCard: { gap: tokens.space.sm },
+  boxHead: { flexDirection: 'row', alignItems: 'flex-start', gap: tokens.space.sm },
+  boxIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: tokens.color.surface,
+    alignItems: 'center', justifyContent: 'center' },
+  boxTitle: { fontSize: 16, fontWeight: '800', color: tokens.color.accentStrong },
+  boxBody: { fontSize: 13, lineHeight: 20, color: tokens.color.accentStrong, marginTop: 2 },
+
+  recordCard: { gap: tokens.space.sm },
+  recordHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: tokens.space.sm },
+  recordLeft: { flexDirection: 'row', alignItems: 'center', gap: tokens.space.sm, flex: 1 },
+  modeIcon: { width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  modeIconDay: { backgroundColor: tokens.color.accentSoft },
+  modeIconNight: { backgroundColor: tokens.color.night },
+  recordIdentity: { flex: 1, gap: 1 },
+  recordMode: { fontSize: 16, fontWeight: '800', color: tokens.color.ink },
+  recordDate: { fontSize: 12.5, color: tokens.color.muted },
+  recordBody: { gap: 3 },
+  recordDuration: { fontSize: 28, fontWeight: '800', letterSpacing: -0.6, color: tokens.color.ink, ...tokens.numeric },
+  recordDurationMuted: { color: tokens.color.muted },
+  recordPoints: { fontSize: 14, fontWeight: '700', color: tokens.color.accentStrong },
+  recordBoost: { fontSize: 13, fontWeight: '700', color: tokens.color.indigo },
+  recordMeta: { fontSize: 12.5, lineHeight: 19, color: tokens.color.muted },
+
+  loadingRow: { flexDirection: 'row', alignItems: 'center', gap: tokens.space.xs, justifyContent: 'center' },
+  hint: { fontSize: 13, color: tokens.color.muted },
+  emptyCard: { alignItems: 'center', gap: tokens.space.xs, paddingVertical: tokens.space.xl },
+  emptyIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: tokens.color.surfaceMuted,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
+  emptyTitle: { fontSize: 16, fontWeight: '700', color: tokens.color.ink },
+  emptyBody: { fontSize: 13.5, lineHeight: 20, color: tokens.color.muted, textAlign: 'center' },
 });

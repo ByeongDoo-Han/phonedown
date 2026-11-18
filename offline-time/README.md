@@ -66,6 +66,16 @@ Google 로그인은 Expo Go에서 복귀 URL을 테스트할 수 없습니다. i
 
 `0007_sleep_mode.sql`이 이 모드입니다. `users`에 목표 시간 두 열, `sessions`에 충전 이벤트 두 열을 더하고, 수면 전용 정산 함수 `finish_sleep_session(p_session_id, p_user_id, p_client_ended_at, p_ended_charging)`을 만듭니다. 적립 자체는 기존 `apply_earn`이 모드별 규칙(`earn_rate.sleep_per_hour`, `daily_cap_minutes.sleep`)으로 처리하므로 원장·정산·부스터가 수면에도 그대로 적용됩니다. `session-start`는 `mode: 'sleep'`을 받아 `source = 'charge'`(충전 중 시작) 또는 `'timer'`로 저장하고, `session-end`는 세션 모드를 읽어 두 정산 함수 중 하나를 고릅니다.
 
+## 화면 · 로컬 알림 (2026-11-19 리뉴얼)
+
+화면 전체를 라이트 캔버스(`#F7F8FA`) + 화이트 카드 + 딥 에메랄드(`#0F766E`)로 다시 만들고, 수면에 해당하는 카드만 미드나잇(`#0F172A`~`#172033`) + 문라이트 라벤더로 뒤집어 낮(집중)과 밤(수면)을 시각적으로 갈랐습니다. 토큰은 `src/theme/tokens.ts` 한 곳에 있고, 공통 조각은 `src/components/`(`Screen`, `ActionButton`, `Card`, `Chip`, `ProgressBar`, `Pill`)에 있습니다. 탭바 아이콘은 `@expo/vector-icons`(Ionicons)를 씁니다.
+
+- **시작 딜레이**: 시작 버튼을 누르면 서버 응답을 기다리지 않고 열린 세션을 로컬에 먼저 넣어 타이머로 넘어갑니다(`src/features/session/optimistic.ts`). `서버와 동기화 중…` 배지를 띄우고, 응답이 오면 `server_started_at`으로 기준을 보정합니다. 실패하면 이전 상태로 되돌리고 409·네트워크 오류를 구분해 안내합니다.
+- **집중 종료 알림**: 시작이 성공하면 목표 시간(30·60·90분) 뒤에 로컬 알림을 예약하고, 조기 종료하면 취소합니다. 종료 요청이 실패하면 다시 예약합니다.
+- **수면 알림**: 수면 카드의 취침·기상 스위치로 매일 알림을 켜고 끕니다(`AsyncStorage` 키 `offline-time.sleep-reminders.v1`). 목표 시간을 바꾸면 켜 둔 알림이 새 시각으로 따라 움직입니다.
+- **플랫폼**: `expo-notifications`(SDK 58)는 로컬 알림만 쓰도록 `enableRemoteNotifications: false`로 등록했습니다. 웹은 `notifications.web.ts` 스텁이 `unsupported`를 돌려주고, Expo Go·시뮬레이터에서 예약이 실패해도 기록·정산은 그대로 동작합니다. `DAILY` 트리거는 기기 로컬 시계를 쓰므로 해외 체류 중에는 기기 시간대를 따릅니다.
+- 알림 시각 계산은 `src/features/notifications/schedule.ts`의 순수 함수이고, `tests/notifications.test.mjs`와 `tests/sessionStart.test.mjs`가 규칙을 검사합니다.
+
 ## 광고 부스터 (AdMob)
 
 `react-native-google-mobile-ads`(17.4.0)로 리워드 광고를 실제로 띄웁니다. 광고 단위는 환경변수 `EXPO_PUBLIC_ADMOB_REWARDED_UNIT_ID_IOS`·`..._ANDROID`를 먼저 쓰고, 비어 있으면 Google이 공개한 테스트 광고 단위(`TestIds.REWARDED`)로 떨어집니다. 앱 ID는 `app.json`의 Expo config plugin(`iosAppId`·`androidAppId`)에 넣었고, 현재 값은 Google 테스트 앱 ID입니다.
@@ -131,8 +141,11 @@ npx supabase db query --remote=uhisjleftevizjfudeip --file tests/sponsorChalleng
 ## 확인
 
 ```sh
+pnpm test
 npx tsc --noEmit
-npx expo lint
+pnpm lint
+npx expo export --platform web
+npx expo export --platform ios
 ```
 
 기획 원문은 [spec.md](docs/spec.md)에 있습니다. 정책 수치와 적립 로직은 후속 마일스톤에서 서버 함수와 함께 구현합니다.
