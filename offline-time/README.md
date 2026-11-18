@@ -73,6 +73,7 @@ Google 로그인은 Expo Go에서 복귀 URL을 테스트할 수 없습니다. i
 - 광고 요청에는 `serverSideVerificationOptions.userId`(Supabase user id)와 `customData`(`{"v":1,"kind":"settlement_booster","session_id":"…"}` 또는 `{"v":1,"kind":"weekly_box"}`)를 실어 보냅니다. 앱과 콜백의 인코딩이 같은지 `tests/adPlacement.test.mjs`가 검사합니다.
 - 앱은 광고를 띄우기만 하고 포인트를 만들지 않습니다. 지급은 AdMob SSV 콜백(`ad-reward-ssv`)이 서명을 검증한 뒤에만 일어나며, 앱은 `rewarded`·`dismissed`·`unavailable` 세 결과만 안내합니다.
 - 광고 로드 15초 타임아웃, 웹·Expo Go·모듈 없음·노필 모두 `unavailable`로 처리해 기본 적립은 그대로 유지됩니다.
+- `rewarded`를 받은 뒤에는 SSV 콜백이 서버에 닿을 때까지 해당 버튼만 `부스터 확인 중…`/`상자 확인 중…`으로 잠그고, 2초 간격 5회(최대 10초) `ad_reward_claims`·포인트·지갑을 다시 읽습니다. 주장 행이 보이면 스스로 풀리고(거절이면 이유 안내), 10초 안에 오지 않아도(테스트 광고 등) 버튼을 풀고 안내만 남깁니다. 판단·대기 로직은 `src/features/points/adRewardWatch.ts`에 있고 `tests/adRewardWatch.test.mjs`가 가짜 시계로 검사합니다.
 - **AdMob 콘솔에 꼭 해야 할 일**: 앱 등록 → 광고 단위(리워드) 생성 → 광고 단위 ID를 위 환경변수에 넣기 → 광고 단위의 SSV 콜백 URL을 `https://uhisjleftevizjfudeip.supabase.co/functions/v1/ad-reward-ssv`로 등록. `app.json`의 앱 ID도 실제 AdMob 앱 ID로 바꿔야 수익이 잡힙니다.
 
 ## 혜택 (친구 초대 · 브랜드 스폰서 챌린지)
