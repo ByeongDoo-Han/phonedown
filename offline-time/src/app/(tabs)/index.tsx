@@ -98,6 +98,11 @@ export default function Home() {
         return;
       }
       const truncated = result.truncated ? ' 12시간을 넘어 12시간까지만 기록했어요.' : '';
+      const growth = result.growth?.referral?.completed
+        ? ` 친구 초대 보상 ${result.growth.referral.invitee_points ?? 0}P도 함께 들어왔어요.`
+        : (result.growth?.challenge?.completed ?? 0) > 0
+          ? ' 챌린지를 달성해 쿠폰을 받았어요. 혜택 탭에서 확인해 주세요.'
+          : '';
       setFeedback((result.session.mode === 'sleep' ? '수면 기록을 정산했어요. ' : '')
         + (amount > 0
           ? `${amount}P 적립 예정이에요. 기록 탭에서 광고 1편을 보면 같은 금액을 한 번 더 받을 수 있어요.`
@@ -106,7 +111,7 @@ export default function Home() {
             : result.transaction?.note === 'daily_cap_reached'
               ? '오늘 적립할 수 있는 시간을 모두 채웠어요.'
               : `기록을 저장했어요. 적립은 ${pointRules.earn.floor_minutes}분 단위로 계산해 30분부터 1P씩 쌓입니다.`)
-        + truncated);
+        + truncated + growth);
     },
     onError: () => setFeedback('기록을 종료하지 못했습니다. 다시 시도해 주세요.'),
   });

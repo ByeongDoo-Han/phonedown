@@ -45,6 +45,12 @@ export default {
       return errorResponse(session.mode === 'sleep' ? '수면 기록을 종료하지 못했습니다.'
         : '집중 기록을 종료하지 못했습니다.', 500);
     }
-    return Response.json(data);
+    // 친구 초대·스폰서 챌린지 진행은 정산 뒤에 한 번 갱신한다. 0008 이전 서버에는 함수가
+    // 없으므로 실패를 정산 실패로 올리지 않는다(기록과 포인트는 이미 저장됐다).
+    const growth = await admin.rpc('refresh_growth_progress', { p_user_id: userId });
+    if (growth.error) {
+      console.warn('Growth progress was not refreshed:', growth.error.code, growth.error.message);
+    }
+    return Response.json({ ...data, growth: growth.error ? null : growth.data });
   }),
 };

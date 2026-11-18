@@ -139,7 +139,9 @@ export default function Records() {
     .filter((transaction) => transaction.week_id === week && transaction.kind !== 'bonus')
     .reduce((sum, transaction) => sum + transaction.amount, 0);
   const weekBonus = (points.data ?? [])
-    .filter((transaction) => transaction.week_id === week && transaction.kind === 'bonus')
+    .filter((transaction) => transaction.week_id === week && transaction.kind === 'bonus'
+      // 초대·챌린지 보너스는 광고 풀과 별개다. 80P 진행률에는 광고 보너스만 넣는다.
+      && transaction.bonus_pool === 'ad')
     .reduce((sum, transaction) => sum + transaction.amount, 0);
   const allowance = weeklyAllowance({ basePoints: weekBase, bonusPoints: weekBonus,
     cap: pointRules.weekly });

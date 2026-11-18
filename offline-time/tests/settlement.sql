@@ -20,9 +20,9 @@ begin
   values (v_first_id, v_user, 'earn_focus', 9, '2020-W02', 'pending',
     'test:settlement:' || v_first_id::text);
   insert into public.point_transactions
-    (id, user_id, kind, amount, week_id, status, idempotency_key, note)
+    (id, user_id, kind, amount, week_id, status, idempotency_key, note, bonus_pool)
   values (v_bonus_id, v_user, 'bonus', 9, '2020-W02', 'pending',
-    'test:settlement-bonus:' || v_bonus_id::text, 'ad_booster');
+    'test:settlement-bonus:' || v_bonus_id::text, 'ad_booster', 'ad');
 
   v_changed := public.settle_week('2020-W02');
   if v_changed <> 2 then raise exception 'Expected two confirmed rows, got %', v_changed; end if;

@@ -16,6 +16,7 @@ export default function TabsLayout() {
     tabBarLabelStyle: { fontSize: 14, fontWeight: '700' } }}>
     <Tabs.Screen name="index" options={{ title: '홈' }} />
     <Tabs.Screen name="records" options={{ title: '기록' }} />
+    <Tabs.Screen name="benefits" options={{ title: '혜택' }} />
     <Tabs.Screen name="store" options={{ title: '교환소' }} />
   </Tabs>;
 }

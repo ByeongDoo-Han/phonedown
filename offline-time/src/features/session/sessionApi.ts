@@ -26,6 +26,14 @@ export type SessionEndResult = {
   transaction: PointTransaction | null;
   // Set by the sleep settlement when the night ran past the 12-hour maximum.
   truncated?: boolean;
+  // Set when the server also moved the referral / sponsor challenge forward (0008).
+  growth?: GrowthResult | null;
+};
+
+export type GrowthResult = {
+  referral?: { changed?: boolean; completed?: boolean; inviter_points?: number;
+    invitee_points?: number; progress_days?: number };
+  challenge?: { changed?: boolean; completed?: number };
 };
 
 export type SessionStartInput =
