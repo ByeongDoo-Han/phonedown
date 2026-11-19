@@ -161,6 +161,34 @@ npx supabase db query --remote=uhisjleftevizjfudeip --file tests/accountDeletion
 - **EAS**: `eas.json`에 `development`(dev client)와 `production`(store, `autoIncrement`) 프로필을 두었습니다. Android production은 `app-bundle`입니다.
 - **출시 체크리스트**: 마이그레이션·함수 배포 순서, secrets, AdMob SSV 콜백, Apple capability·Widget Extension·App Group, 실기기 검증 표, 스토어 제출 항목을 [docs/release-checklist.md](docs/release-checklist.md)에 정리했습니다.
 
+## 공개 고지 페이지 (GitHub Pages)
+
+스토어 제출에 넣는 공개 주소는 **저장소 루트의 `docs/`**(이 폴더의 `offline-time/docs/`와 다른 곳)에 있는
+정적 HTML입니다. 앱 안 화면(`src/features/legal/legalText.ts`)과 같은 문구·숫자를 담고,
+`tests/legalPages.test.mjs`가 조항·숫자·문의 주소·내부 링크와 앵커를 대조합니다. 빌드 도구 없이 열리므로
+Pages·S3 어디에 올려도 됩니다. 같은 이름의 폴더가 앱 안에 하나 더 있으니 경로를 볼 때 주의하세요.
+
+| 파일 | 용도 | 주소 |
+| --- | --- | --- |
+| [`docs/index.html`](../docs/index.html) | 고지 문서 개요(세 문서로 가는 길) | https://byeongdoo-han.github.io/phonedown/ |
+| [`docs/privacy.html`](../docs/privacy.html) | App Store Connect "개인정보처리방침 URL", Google Play 데이터 보안 | https://byeongdoo-han.github.io/phonedown/privacy.html |
+| [`docs/terms.html`](../docs/terms.html) | 이용약관(전문) | https://byeongdoo-han.github.io/phonedown/terms.html |
+| [`docs/account-deletion.html`](../docs/account-deletion.html) | App Store "계정 삭제 URL", Google Play 계정 삭제 URL | https://byeongdoo-han.github.io/phonedown/account-deletion.html |
+
+켜는 방법(저장소마다 한 번): GitHub 저장소 → **Settings → Pages → Build and deployment** →
+Source를 `Deploy from a branch`, Branch `main`, Folder `/docs`로 두고 Save. 1~2분 뒤 위 주소가 열립니다.
+같은 일을 CLI로 하려면:
+
+```sh
+gh api -X POST repos/ByeongDoo-Han/phonedown/pages \
+  -f 'source[branch]=main' -f 'source[path]=/docs'
+```
+
+- `docs/.nojekyll`이 있어 Jekyll 처리를 건너뜁니다(HTML을 그대로 서빙).
+- 문의 주소는 앱과 같은 임시 기본값 `help@offlinetime.app`을 씁니다. `EXPO_PUBLIC_SUPPORT_EMAIL`을
+  실제 주소로 바꾸면 루트 [docs/](../docs/) HTML의 `mailto:`와 본문도 함께 바꿔야 합니다(스토어 제출 전).
+- 정책 숫자·조항을 바꾸면 `legalText.ts`와 루트 `docs/` HTML을 같이 고치고 `pnpm test`로 확인합니다.
+
 ## 확인
 
 ```sh
