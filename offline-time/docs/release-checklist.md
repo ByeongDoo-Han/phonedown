@@ -120,9 +120,18 @@ npx supabase functions deploy \
       (적립 2P/시간, 주 100P+80P, 1,400P 최소, 월요일 정산, 탈퇴 시 즉시 파기)
 - [ ] 문의 주소: EAS 환경변수 `EXPO_PUBLIC_SUPPORT_EMAIL`에 실제 수신 주소를 넣는다.
       비어 있으면 `help@offlinetime.app`(임시)로 표시된다. **제출 전 반드시 실제 주소로.**
-- [ ] App Store Connect의 **개인정보처리방침 URL**에 공개 페이지를 넣는다(앱 안 화면과 같은 내용).
+      바꿨다면 공개 페이지(저장소 루트 `docs/*.html`)의 `mailto:`도 같은 주소로 바꾸고 `pnpm test`로 확인한다.
+- [ ] **GitHub Pages 열기**: 저장소 Settings → Pages → Source `Deploy from a branch`,
+      Branch `main`, Folder `/docs` (한 번만). 1~2분 뒤 https://byeongdoo-han.github.io/phonedown/ 가 열린다.
+      CLI: `gh api -X POST repos/ByeongDoo-Han/phonedown/pages -f 'source[branch]=main' -f 'source[path]=/docs'`
+- [ ] 공개 페이지 확인(핸드폰·PC에서 한 번씩): 개요
+      https://byeongdoo-han.github.io/phonedown/ , 개인정보처리방침 …/privacy.html ,
+      이용약관 …/terms.html , 계정 삭제 …/account-deletion.html . 문의 링크가 메일 앱을 연다.
+- [ ] App Store Connect의 **개인정보처리방침 URL**에 `…/privacy.html`을 넣는다(앱 안 화면과 같은 내용).
       GitHub Pages 등 정적 호스팅이면 충분하다.
-- [ ] App Store Connect의 **계정 삭제 URL** 항목에도 같은 공개 페이지를 넣는다.
+- [ ] App Store Connect의 **계정 삭제 URL**, Google Play의 계정 삭제 URL 항목에도
+      `…/account-deletion.html`을 넣는다. 두 스토어 모두 "앱 안에서 지우는 방법"과 "앱 밖에서
+      요청하는 방법"을 같이 요구하므로, 한 페이지에 둘 다 있어야 한다.
 - [ ] 심사 노트: 포인트를 모으는 방법(기록 → 월요일 확정 → 교환), 광고 부스터는 선택이며 광고가
       없어도 적립된다는 점, 심사용 계정(이메일/비밀번호)을 적는다.
 - [ ] 개인정보 영양성분표(Privacy Nutrition Label): 이메일·기록·포인트·교환 번호·광고 식별자.
