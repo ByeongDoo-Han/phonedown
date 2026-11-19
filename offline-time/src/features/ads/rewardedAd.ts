@@ -17,6 +17,7 @@ import { Platform } from 'react-native';
 import type { RewardedAd } from 'react-native-google-mobile-ads';
 
 import { adCustomData, type RewardedAdOutcome, type RewardedPlacement } from './adPlacement';
+import { resolveRewardedUnit, testUnitWarning } from './adUnits';
 
 export type { RewardedAdOutcome, RewardedPlacement };
 
@@ -27,6 +28,8 @@ const LOAD_TIMEOUT_MS = 15_000;
 
 let adsModule: Promise<AdsModule | null> | null = null;
 let initialization: Promise<boolean> | null = null;
+// 테스트 광고 단위 경고는 실행 중 한 번만 남긴다(빈 문자열 = 이미 확인함).
+let resolvedUnitWarning: string | null = null;
 
 function loadAdsModule(): Promise<AdsModule | null> {
   // Expo Go has no AdMob native module: the import fails quietly instead of breaking the app.
@@ -40,9 +43,14 @@ function rewardedUnitId(ads: AdsModule): string {
   const configured = Platform.OS === 'ios'
     ? process.env.EXPO_PUBLIC_ADMOB_REWARDED_UNIT_ID_IOS
     : process.env.EXPO_PUBLIC_ADMOB_REWARDED_UNIT_ID_ANDROID;
-  const trimmed = configured?.trim();
   // Google's published test unit keeps development builds honest until a real unit is set.
-  return trimmed && trimmed.length > 0 ? trimmed : ads.TestIds.REWARDED;
+  const unit = resolveRewardedUnit(configured, ads.TestIds.REWARDED);
+  if (resolvedUnitWarning === null) {
+    const warning = testUnitWarning({ test: unit.test, isDev: __DEV__ });
+    if (warning) console.warn(warning);
+    resolvedUnitWarning = warning ?? '';
+  }
+  return unit.unitId;
 }
 
 async function ensureInitialized(ads: AdsModule): Promise<boolean> {

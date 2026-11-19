@@ -188,10 +188,22 @@ export default function Store() {
         <View style={styles.productIcon}><Ionicons name="receipt-outline" size={18} color={tokens.color.muted} /></View>
         <View style={styles.flex}>
           <Text style={styles.cardTitle}>{formatPoints(item.points)} 교환</Text>
-          <Text style={styles.hint}>{new Date(item.created_at).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' })}</Text>
+          <Text style={styles.hint}>
+            {new Date(item.created_at).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' })} 신청
+            {item.status === 'issued' && item.issued_at
+              ? ` · ${new Date(item.issued_at).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' })} 발송`
+              : ''}
+          </Text>
         </View>
         <Pill label={statusLabels[item.status]} tone={historyTone(item.status)} />
       </View>
+      {item.status === 'requested' ? <Text style={styles.hint}>
+        운영자가 확인한 뒤 발송해요. 발송되면 이 자리에서 상태가 바뀌고, 발송이 어려우면 사유와 함께 포인트를 돌려드려요.
+      </Text> : null}
+      {item.status === 'failed' && item.fail_reason ? <Notice tone="danger">
+        {item.fail_reason === 'account_deleted' ? '탈퇴로 취소된 신청이에요.' : `발송 실패 · ${item.fail_reason}`}
+        {' '}포인트는 다시 돌려드렸어요.
+      </Notice> : null}
     </Card>)}
   </Screen>;
 }

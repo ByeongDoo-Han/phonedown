@@ -1,5 +1,108 @@
 # 구현 결정
 
+## 2026-11-19: 3·4단계 — 발송 자동화(운영자 도구) + 스토어 출시 마무리
+
+브랜치 `feat/ops-fulfillment-release-prep`. 2단계(PR #6)까지 머지된 `main`에서 시작했다. 3단계는
+"교환·쿠폰이 실제로 사람에게 도착하는 일"을, 4단계는 "스토어에 올릴 수 있는 상태"를 닫는다.
+**포인트를 만드는 경로는 그대로 서버뿐이고**, 발송 완료·실패도 결국 0004의 `resolve_redemption`을
+통과한다(그 함수는 한 줄도 고치지 않았다).
+
+### 1) 발송 추적은 상태 열거형을 늘리지 않고 열로 남긴다 (`0009`)
+
+- 선택지 비교: (a) `redemption_status`에 `processing`을 추가, (b) 별도 `fulfillment_attempts` 표,
+  (c) `redemptions`·`sponsor_coupons`에 시도/결과 열을 더하고 감사 로그를 따로 둔다. (c)를 골랐다.
+- **(a)를 피한 이유**: Postgres는 새 enum 값을 추가한 트랜잭션에서 그 값을 쓸 수 없다. 마이그레이션
+  한 파일 안에서 상태를 쓰려면 두 번 나눠 배포해야 하고, 실패하면 상태 기계가 반쯤 적용된다.
+  실제로 필요한 정보는 "지금 발송 중인가"가 아니라 "누가 언제 잡았는가"였으므로
+  `processing_started_at`이면 충분하다.
+- **(b)를 피한 이유**: 운영자가 보는 것은 대부분 "이 신청의 마지막 상태"다. 시도마다 새 행을 만들면
+  목록 질의가 매번 최신 행을 골라야 하고, 지금 유일한 소비자는 운영자 한 화면이다.
+- **대신 감사 로그를 남긴다**: `fulfillment_events`(append-only 트리거, RLS만 켜고 정책 없음 →
+  service_role 전용)에 begin/issued/sent/failed/error와 사람이 적은 메모·공급자·거래 번호가 쌓인다.
+  사용자에게 보이는 표에는 운영 내부 문구를 넣지 않으려고, 메모는 이 로그에만 둔다.
+- **중복 발송 방지**: `begin_redemption`이 `processing_started_at`을 찍고 15분 동안 재진입을 막는다.
+  운영자가 앱을 닫아도 15분 뒤에는 다른 사람이 이어받을 수 있어, 락이 영구히 남지 않는다.
+- **정합성**: `fulfill_redemption`·`fail_redemption`은 메타데이터만 먼저 쓰고 각각
+  `resolve_redemption(id, true)` / `resolve_redemption(id, false, reason)`을 그대로 호출한다. 환급
+  멱등키·재고 복원·issued_at은 0004가 계속 책임진다. 이미 환급된 신청을 발송 완료로 뒤집는 요청은
+  오류로 막는다(장부가 어긋나는 유일한 경로).
+- **쿠폰은 포인트가 아니다**: `resolve_sponsor_coupon`은 `pending`/`sent`/`failed`만 옮기고 장부를
+  만들지 않는다. 실패 → 재시도(begin이 `pending`으로 되돌림)는 허용하고, `sent` → `failed`는 막는다.
+
+### 2) 발송 공급자는 한 파일의 경계로 (`_shared/giftCoupon.ts`)
+
+- 계약이 끝나기 전에는 **수동 모드**가 기본이다. 공급자 키가 없으면 `admin-fulfillment`의 `send`는
+  신청을 잡아 두기만 하고 "직접 보낸 뒤 거래 번호를 남기고 완료 처리"를 돌려준다. 이 경로에서
+  사용자는 아무 손해를 보지 않는다(포인트는 이미 차감됐고, 실패하면 환급된다).
+- `FULFILLMENT_PROVIDER=giftishow`를 **명시했는데 키가 비어 있으면** manual로 조용히 떨어지지 않고
+  503으로 빠진 키 이름을 돌려준다. 조용한 폴백은 "자동 발송 중"이라고 믿게 만드는 쪽이 더 위험하다.
+- 공급자 명세가 만나는 지점은 `buildOrderBody`(요청)와 `readOrderResult`(응답) 두 함수뿐이다.
+  네트워크·5xx·시간 초과는 재시도 가능, 4xx(상품 코드·번호 오류)는 그대로 실패로 남긴다.
+- **관리자 인증**: 앱이 service_role 키를 가질 수는 없으므로, 운영자도 자기 Supabase 세션으로
+  함수를 부르고 함수가 `ADMIN_USER_IDS`를 확인한다. 비어 있으면 503이며, 앱은 `whoami`가 403이면
+  운영자 도구를 아예 보여 주지 않는다(설정 화면에서만 확인하므로 일반 사용자에게는 호출조차 없다).
+
+### 3) 계정 탈퇴: 지우되, 회계 수량만 남긴다
+
+- **순서**: ① 로그인 확인 → ② 대기 중인 교환 취소·환급(재고 복원) → ③ 개인 식별 없는 요약 →
+  ④ `auth.admin.deleteUser` → ⑤ 삭제가 끝난 뒤 요약을 `account_deletions`에 기록.
+  ②를 먼저 하는 이유: 사용자가 사라지면 보낼 곳이 없는데 재고만 줄어 있으면 안 된다.
+  ⑤를 마지막에 하는 이유: 삭제가 실패했는데 보존 기록만 남으면 회계와 실제가 어긋난다.
+- **cascade로 충분한 이유**: `public.users.id`가 `auth.users(id) on delete cascade`이고, 세션·원장·
+  교환·쿠폰·초대·정산·기기·광고 보상이 모두 `users`를 cascade로 참조한다. `point_transactions`의
+  `session_id`·`redemption_id`는 `on delete set null`이라 삭제 순서 충돌이 없다. `accountDeletion.sql`
+  이 실제로 auth 행을 지워 전부 사라지는지 확인한다.
+- **남기는 것**: 지급·교환 **수량과 시각**만. 이메일·전화번호·user_id는 저장하지 않는다. 탈퇴를
+  되돌릴 수 없으므로 앱은 "탈퇴"를 입력해야 버튼이 열리고, 발송 대기 중인 교환이 있으면 그 사실을
+  확인 모달에 먼저 보여 준다. 약관·개인정보처리방침에도 같은 문장을 둔다.
+- **탈퇴 요약 정리**: `purge_account_deletions(before)`로 보존 기간이 지난 행을 운영자가 지운다.
+
+### 4) 약관·정책은 앱 안의 문구 모듈로
+
+- 선택지 비교: (a) 원격 웹 문서 링크, (b) 앱 번들 안의 정적 HTML, (c) TS 모듈의 구조화된 문구.
+  (c)를 골랐다. `tests/legalText.test.mjs`가 실제 정책 숫자(2P/시간, 주 100P+80P, 1,400P, 월요일,
+  40분/20분, 12시간/3시간, 10분 절사)와 개인정보 항목(수집·미수집·탈퇴 파기)을 검사하므로, 값을
+  바꾸고 문구를 잊는 일이 테스트에서 걸린다. 화면은 로그인 하단과 설정 두 곳에서 같은 컴포넌트를 쓴다.
+- 문의 주소는 `EXPO_PUBLIC_SUPPORT_EMAIL`로 바꾼다. 코드에 실제 주소를 박지 않았고, 비어 있으면
+  임시 주소가 나온다(릴리스 체크리스트에 교체 항목으로 명시).
+- 스토어는 **공개 URL**도 요구하므로, 같은 내용을 정적 호스팅에 올리는 일은 체크리스트에 남겼다
+  (앱 안 화면만으로는 App Store Connect의 URL 칸을 채울 수 없다).
+
+### 5) AdMob 실전 값은 빌드 설정에서 강제한다
+
+- `app.json`은 그대로 두고 `app.config.ts`가 플러그인 옵션만 덮어쓴다: `ADMOB_APP_ID_IOS`·
+  `ADMOB_APP_ID_ANDROID`가 있으면 실제 값, 없으면 테스트 ID + `extra.admobTestAppIds = true`.
+- **production 프로필에서 테스트 ID가 남아 있으면 `expo config` 단계에서 오류**를 낸다. 광고 수익이
+  0이 되는 빌드를 올리는 것보다, 빌드가 시작되지 않고 무엇을 넣어야 하는지 말하는 편이 낫다.
+  개발·프리뷰 빌드는 테스트 ID로 그대로 돈다(무효 트래픽 방지).
+- 광고 단위는 런타임 값이라 `src/features/ads/adUnits.ts`에서 해석하고, 테스트 단위면 배포 빌드에서
+  한 번 경고한다. 앱 ID와 광고 단위는 서로 다른 값이라 둘 다 바꿔야 한다.
+- `app.config.ts`는 Expo가 JS로 바꿔 require하므로 **상대 경로 import를 두지 않았다**(해석되지
+  않는다). 그래서 해석 규칙을 이 파일 안에 두고, 테스트가 `app.config.ts`를 직접 불러 검사한다.
+
+### 6) 검증
+
+- `pnpm test` **111건** 통과(신규 39건: AdMob 설정 5 · 광고 단위 3 · 운영자 화면 판정 10 · 공급자·관리자 9 · 약관 9 · 탈퇴 정책 4 · 함수 오류 3 ... 합계 39).
+- `npx tsc --noEmit`, `pnpm lint`, `npx expo config --type public`, `npx expo export --platform web`,
+  `npx expo export --platform ios` 통과.
+- SQL: PGlite(임베디드 PostgreSQL 17)에서 `0001`~`0009`를 적용하고 `tests/*.sql` 11개 전부 통과
+  (신규 `fulfillment.sql`, `accountDeletion.sql`).
+- `deno check supabase/functions/*/index.ts` 6개 함수 전부 통과(신규 `admin-fulfillment`,
+  `delete-account`).
+
+### 7) 아직 없는 것 / 다음에 할 일
+
+- 원격 반영은 사람이 한다: `db push`, 함수 6개 배포, `ADMIN_USER_IDS`·AdMob 실전 ID·문의 주소 등록.
+  순서와 항목은 [release-checklist.md](release-checklist.md).
+- **원격에는 0002~0009가 아직 없다.** 앱은 폴백으로 동작하지만, 발송·초대·수면 충전 근거는 반영 후에
+  켜진다.
+- 공급자 실제 계약(기프티쇼/쿠프마케팅) 전에는 수동 모드다. 자동 재발송·만료 알림·브랜드에 보내는
+  메일은 범위 밖이다.
+- 계정 탈퇴는 즉시 삭제다(유예 기간 없음). 실수로 지운 계정을 되살리는 길은 없고, 그 사실을 확인
+  모달과 약관에 적었다.
+
+---
+
 ## 2026-11-19: 잠금화면 Live Activity · 충전 근거 최신화
 
 집중·수면 기록이 도는 동안 iOS 잠금화면과 다이내믹 아일랜드에 실제로 흐르는 타이머를 띄우고(`feat/sleep-live-activity-charging`), 수면 카드의 충전 안내를 1탭 시작과 최신 근거 중심으로 다시 만들었다. **DB 스키마·Edge Function은 한 줄도 바꾸지 않았다** — `ended_charging`은 이미 있는 열이고, 앱이 그 값을 더 정확한 시점에 보내도록만 바꿨다.

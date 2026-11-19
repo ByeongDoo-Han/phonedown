@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { router } from 'expo-router';
 import { useEffect, useRef, useState, type ComponentProps } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
@@ -29,7 +30,6 @@ import { chargeFlag, readChargeState, useChargeState } from '@/features/sleep/ch
 import { BEDTIME_CHOICES, WAKETIME_CHOICES, formatGoalMinutes,
   goalFromProfile, goalMinutes, kstMinutes, preferredMode, type SleepGoal } from '@/features/sleep/sleepGoal';
 import { walletQueryKey } from '@/features/store/storeApi';
-import { supabase } from '@/lib/supabase';
 import { tokens } from '@/theme/tokens';
 
 const labels = { sleep: '수면', focus: '집중', both: '수면과 집중' };
@@ -302,10 +302,10 @@ export default function Home() {
         <Text style={styles.title}>오늘의 오프라인</Text>
         <Text style={styles.date}>{dateLabel}</Text>
       </View>
-      <Pressable accessibilityRole="button" accessibilityLabel="로그아웃"
-        onPress={() => { void supabase?.auth.signOut(); }}
+      <Pressable accessibilityRole="button" accessibilityLabel="설정"
+        onPress={() => router.push('/settings')}
         style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}>
-        <Ionicons name="log-out-outline" size={20} color={tokens.color.muted} />
+        <Ionicons name="settings-outline" size={20} color={tokens.color.muted} />
       </Pressable>
     </View>
 

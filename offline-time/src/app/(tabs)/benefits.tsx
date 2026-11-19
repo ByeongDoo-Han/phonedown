@@ -312,11 +312,19 @@ function ChallengeCard({ challenge, participation, coupon, busy, onJoin, onLeave
     </View> : null}
 
     {coupon ? <View style={styles.couponBox}>
-      <Text style={styles.couponTitle}>쿠폰이 발급됐어요</Text>
+      <View style={styles.couponHead}>
+        <Text style={styles.couponTitle}>쿠폰이 발급됐어요</Text>
+        <Pill label={coupon.delivery_status === 'sent' ? '전달 완료'
+          : coupon.delivery_status === 'failed' ? '전달 확인 중' : '발송 준비'}
+          tone={coupon.delivery_status === 'sent' ? 'success'
+            : coupon.delivery_status === 'failed' ? 'warning' : 'neutral'} />
+      </View>
       <Text style={styles.couponCode} selectable>{coupon.code}</Text>
       <Text style={styles.hint}>{coupon.delivery_status === 'sent'
-        ? '브랜드 쿠폰함에서 확인할 수 있어요.'
-        : '발송 준비 중이에요. 브랜드 쿠폰이 준비되면 안내드릴게요.'}</Text>
+        ? '브랜드 쿠폰함에서 확인할 수 있어요. 사용 조건과 유효기간은 브랜드 정책을 따라요.'
+        : coupon.delivery_status === 'failed'
+          ? '브랜드에 전달하는 중 문제가 있었어요. 운영자가 다시 준비하고 있어요. 아래 코드는 그대로 보관해 주세요.'
+          : '발송 준비 중이에요. 브랜드 쿠폰이 준비되면 안내드릴게요.'}</Text>
     </View> : null}
 
     {status === 'joined'
@@ -380,6 +388,8 @@ const styles = StyleSheet.create({
   progressBlock: { gap: 6, marginTop: 2 },
   progressHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   progressValue: { fontSize: 13, fontWeight: '800', color: tokens.color.accent, ...tokens.numeric },
+  couponHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    gap: tokens.space.sm },
   couponBox: { backgroundColor: tokens.color.surfaceMuted, borderRadius: tokens.radius.md,
     padding: tokens.space.sm, gap: 4 },
   couponTitle: { fontSize: 13.5, fontWeight: '700', color: tokens.color.ink },
