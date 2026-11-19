@@ -174,5 +174,8 @@ npx eas-cli@latest submit --platform android --profile production
 - [ ] App Store Connect: 앱 정보(이름, 부제, 카테고리=건강/라이프스타일), 연령 등급, 스크린샷
       (6.9"/6.5" iPhone), 미리보기, 설명·키워드, 지원 URL
 - [ ] Google Play: Data safety, 광고 포함 표시, 타깃 API 레벨, 내부 테스트 → 비공개 테스트 → 프로덕션
+- [ ] 스토어 입력 원고: [store-listing.md](store-listing.md)의 이름·부제·설명·키워드·스크린샷 카피·
+      심사 노트·App Privacy/Data safety 응답을 그대로 복사한다. `[입력 필요]`(심사용 계정, 실제 문의 주소,
+      활성 상품 1종, AdMob 실값)를 모두 채운 뒤 제출한다. 숫자를 바꾸면 `pnpm test`가 알려 준다.
 - [ ] `ITSAppUsesNonExemptEncryption = false`(설정됨) — 별도 수출 신고 없음
 - [ ] 제출 후 심사에서 계정 삭제·약관·광고를 지적하면 6번 항목을 먼저 확인
