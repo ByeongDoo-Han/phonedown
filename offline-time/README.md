@@ -1,6 +1,6 @@
 # 오프라인 타임
 
-Expo SDK 58 모바일 앱과 Supabase 데이터베이스의 초기 구현입니다. 가입, 로그인, 주력 시간 선택, 수동 집중·수면 기록 시작·종료, 최근 기록 조회, 유효한 기록의 포인트 적립, 지난주 포인트 정산, 교환 신청·이력이 동작합니다. 포인트는 기본 적립(1시간 = 2P, 주 100P까지)과 광고 부스터(2배, 주 80P까지)·주간 보너스 상자로 나뉘며, 광고 보상은 AdMob SSV 콜백으로만 지급됩니다. 수면은 충전 상태를 확인해 시작하고 충전기가 꽂혀 있으면 1탭으로 바로 시작하며, 아침에 한 번 눌러 정산합니다. iOS에서는 집중·수면 기록이 도는 동안 잠금화면과 다이내믹 아일랜드에 실시간 타이머가 떠 있고(Live Activity, 개발 빌드 필요), 정산하면 그 자리에서 닫힙니다. 충전 이벤트는 앱이 살아 있는 동안 받고 복귀·정산 시점에 다시 읽습니다(백그라운드 자동 감지·서버 푸시는 없음). `혜택` 탭에서 친구 초대(3일 연속 정산 시 양쪽 +300P, 월 5회)와 브랜드 스폰서 챌린지(달성 시 브랜드 쿠폰)를 쓸 수 있습니다 — 챌린지는 제휴 계약 전이라 비활성 씨앗만 있고, 쿠폰 발송은 운영자 몫입니다. 교환 상품 발송도 아직 동작하지 않습니다.
+Expo SDK 58 모바일 앱과 Supabase 데이터베이스의 초기 구현입니다. 가입, 로그인, 주력 시간 선택, 수동 집중·수면 기록 시작·종료, 최근 기록 조회, 유효한 기록의 포인트 적립, 지난주 포인트 정산, 교환 신청·이력이 동작합니다. 포인트는 기본 적립(1시간 = 2P, 주 100P까지)과 광고 부스터(2배, 주 80P까지)·주간 보너스 상자로 나뉘며, 광고 보상은 AdMob SSV 콜백으로만 지급됩니다. 수면은 충전 상태를 확인해 시작하고 충전기가 꽂혀 있으면 1탭으로 바로 시작하며, 아침에 한 번 눌러 정산합니다. iOS에서는 집중·수면 기록이 도는 동안 잠금화면과 다이내믹 아일랜드에 실시간 타이머가 떠 있고(Live Activity, 개발 빌드 필요), 정산하면 그 자리에서 닫힙니다. 충전 이벤트는 앱이 살아 있는 동안 받고 복귀·정산 시점에 다시 읽습니다(백그라운드 자동 감지·서버 푸시는 없음). `혜택` 탭에서 친구 초대(3일 연속 정산 시 양쪽 +300P, 월 5회)와 브랜드 스폰서 챌린지(달성 시 브랜드 쿠폰)를 쓸 수 있습니다 — 챌린지는 제휴 계약 전이라 비활성 씨앗만 있습니다. 발송은 이제 앱 안의 **운영자 도구**에서 처리합니다: 공급자 키가 없으면 수동 모드로 운영자가 직접 보낸 뒤 완료/실패를 기록하고, 키를 넣으면 기프티콘 공급자 호출로 바뀝니다. 계정 탈퇴(App Store 필수)와 이용약관·개인정보처리방침 화면도 들어갔습니다.
 
 연결된 원격 `apptech` 프로젝트(`uhisjleftevizjfudeip`)는 PostgreSQL 17.11입니다. 초기 기획의 PostgreSQL 15 고정 조건은 2026-11-16 사용자 선택에 따라 이 프로젝트에서 PostgreSQL 17로 변경했습니다. `0001_init.sql`과 앱 복귀 URL 설정은 원격에 적용됐습니다.
 
@@ -115,11 +115,11 @@ npx supabase db query --remote=uhisjleftevizjfudeip \
 
 초대·챌린지 보너스는 광고 부스터 주 80P 풀을 쓰지 않습니다. `point_transactions.bonus_pool`이 `ad` / `referral` / `sponsor_challenge`를 구분하고, `claim_ad_booster`·`claim_weekly_box`는 `bonus_pool = 'ad'`만 셉니다. `kind = 'bonus'`인 행은 `bonus_pool`이 반드시 있어야 하고(CHECK), append-only 트리거가 이 열의 변경도 막습니다.
 
-현재 발송 제휴사·쿠폰 재고가 없어 **운영 활성 상품은 0건**입니다. 상품 발송 수단과 재고를 마련한 뒤에만 실제 상품을 활성화해야 합니다. 교환 신청이 접수되더라도 외부 발송은 자동화되지 않았으며, 운영자가 발송 결과를 확인하고 상태를 처리해야 합니다.
+현재 발송 제휴사·쿠폰 재고가 없어 **운영 활성 상품은 0건**입니다. 상품 발송 수단과 재고를 마련한 뒤에만 실제 상품을 활성화해야 합니다. 켜 두면 신청이 들어오고, 실패는 환급으로 끝나므로 재고·발송 수단을 먼저 확인하세요. 발송 처리 방법은 아래 3단계 절에 있습니다.
 
 ```sh
 npx supabase db push --remote=uhisjleftevizjfudeip --skip-vault
-npx supabase functions deploy session-start session-end ad-reward-ssv --remote=uhisjleftevizjfudeip --use-api
+npx supabase functions deploy session-start session-end ad-reward-ssv redeem-product admin-fulfillment delete-account --project-ref uhisjleftevizjfudeip --use-api
 pnpm test
 npx supabase db query --remote=uhisjleftevizjfudeip --file tests/focusPoints.sql --yes
 npx supabase db query --remote=uhisjleftevizjfudeip --file tests/settlement.sql --yes
@@ -130,13 +130,36 @@ npx supabase db query --remote=uhisjleftevizjfudeip --file tests/weeklyCaps.sql 
 npx supabase db query --remote=uhisjleftevizjfudeip --file tests/sleepMode.sql --yes
 npx supabase db query --remote=uhisjleftevizjfudeip --file tests/referral.sql --yes
 npx supabase db query --remote=uhisjleftevizjfudeip --file tests/sponsorChallenge.sql --yes
+npx supabase db query --remote=uhisjleftevizjfudeip --file tests/fulfillment.sql --yes
+npx supabase db query --remote=uhisjleftevizjfudeip --file tests/accountDeletion.sql --yes
 ```
 
 `ad-reward-ssv`는 AdMob 콘솔의 SSV 콜백 URL(`https://<project>.supabase.co/functions/v1/ad-reward-ssv`)로 등록하고 JWT 검증을 끄고 배포해야 합니다(`verify_jwt = false`). 나머지 함수는 JWT 검증이 켜져 있습니다.
 
-**적용 순서**: DB를 먼저 올리고 함수를 배포합니다. 새 `session-start`·`session-end`는 0007이 더한 `started_charging`·`ended_charging` 열을 쓰기 때문에, 순서가 바뀌면 수면 기록만 실패합니다(집중 기록은 그대로 동작). 앱은 열이 없는 동안 예전 열로 다시 조회해 화면이 깨지지 않습니다. 0008의 `refresh_growth_progress`도 같은 원칙입니다 — 함수가 없으면 `session-end`는 경고만 남기고 정산을 마치므로, 순서가 바뀌어도 기록·포인트는 안전하고 초대 진행만 늦어집니다.
+**적용 순서**: DB를 먼저 올리고 함수를 배포합니다. 새 `session-start`·`session-end`는 0007이 더한 `started_charging`·`ended_charging` 열을 쓰기 때문에, 순서가 바뀌면 수면 기록만 실패합니다(집중 기록은 그대로 동작). 앱은 열이 없는 동안 예전 열로 다시 조회해 화면이 깨지지 않습니다. 0008의 `refresh_growth_progress`도 같은 원칙입니다 — 함수가 없으면 `session-end`는 경고만 남기고 정산을 마치므로, 순서가 바뀌어도 기록·포인트는 안전하고 초대 진행만 늦어집니다. 0009도 같은 방식입니다: 새 앱은 발송 열이 없는 서버에서 교환 내역을 예전 열로 다시 읽고, `delete-account`는 0009 이전 서버에서도 탈퇴를 마칩니다(요약만 남기지 않음).
 
 `supabase/config.toml`에는 로컬 개발용 Auth 기본값도 들어 있습니다. 전체 파일을 `supabase config push`로 원격에 적용하면 이메일 확인 같은 원격 설정이 바뀔 수 있으므로, 원격 설정은 변경할 항목만 지정해 적용합니다.
+
+## 발송 처리 (3단계 · 운영자 도구)
+
+교환 상품과 브랜드 쿠폰의 **실제 발송**은 앱이 아니라 운영자가 합니다. `0009_fulfillment_and_account.sql`이 발송 시도·결과를 남길 열과 감사 로그를 더하고, Edge Function `admin-fulfillment`가 그 처리를 대신합니다.
+
+- **상태**: `redemptions.status`(`requested`/`issued`/`failed`)는 그대로 두고, 그 위에 `provider`·`provider_ref`(공급자 거래 번호)·`attempts`·`processing_started_at`·`processed_at`·`last_error`를 얹었습니다. 열거형에 "발송 중"을 더하지 않은 이유는 새 enum 값을 같은 트랜잭션에서 쓸 수 없기 때문이고, 실제로 필요한 것은 "누가 언제 잡았는지"뿐입니다.
+- **중복 발송 방지**: `begin_redemption` / `begin_sponsor_coupon`이 15분짜리 락(`processing_started_at`)과 시도 횟수를 남깁니다. 두 운영자가 같은 신청을 동시에 열어도 한 명만 잡고, 15분이 지나면 다시 잡을 수 있습니다.
+- **완료·실패**: `fulfill_redemption`은 메타데이터를 남긴 뒤 `resolve_redemption(id, true)`를, `fail_redemption`은 `resolve_redemption(id, false, reason)`을 그대로 부릅니다. 그래서 환급 장부·재고 복원은 0004의 규칙(한 번만)을 그대로 따릅니다. 이미 환급한 신청을 뒤늦게 "발송 완료"로 뒤집으면 오류로 막습니다.
+- **쿠폰**: `resolve_sponsor_coupon(id, sent)`이 상태만 옮깁니다(포인트 없음). 실패 뒤 다시 잡으면 `pending`으로 돌아가 재시도할 수 있고, 발송 완료는 다시 실패로 뒤집히지 않습니다.
+- **감사 로그**: `fulfillment_events`(append-only, service_role 전용)에 begin/issued/sent/failed/error와 사람이 적은 메모가 남습니다. 개인 정보는 넣지 않습니다.
+- **공급자 경계**: `supabase/functions/_shared/giftCoupon.ts` 하나에 모았습니다. `GIFTISHOW_API_URL`·`GIFTISHOW_API_KEY`·`GIFTISHOW_USER_ID`가 모두 있으면 실제 호출로, 없으면 **수동 모드**로 동작합니다. 수동 모드에서 "발송"은 신청을 잡아 두기만 하고, 운영자가 직접 보낸 뒤 거래 번호를 남겨 완료 처리합니다. 계약 문서의 필드가 다르면 `buildOrderBody`·`readOrderResult` 두 함수만 고칩니다.
+- **권한**: `admin-fulfillment`는 호출자의 Supabase 세션을 확인하고 `ADMIN_USER_IDS`(쉼표 구분 uuid)에 있는 사람만 통과시킵니다. 비어 있으면 503으로 "무엇을 설정해야 하는지" 돌려주고, 앱에서는 운영자 도구 자체가 보이지 않습니다(`whoami`).
+- **앱**: 설정 → 운영자 도구(`src/app/admin.tsx`)에서 교환·쿠폰 대기 목록, 자동/수동 모드 안내, 발송 시도·완료(거래 번호·메모)·실패(사유) 처리를 합니다. 교환소의 교환 내역은 발송일·실패 사유·환급 안내를 보여 주고, 혜택 탭의 쿠폰은 전달 상태(발송 준비/전달 완료/전달 확인 중)를 보여 줍니다. 두 화면 모두 0009 이전 서버에서는 예전 열로 다시 읽어 깨지지 않습니다.
+
+## 출시 준비 (4단계)
+
+- **계정 탈퇴**: 설정 → 회원 탈퇴 → "탈퇴" 입력 → 삭제. `delete-account` Edge Function이 로그인 사용자를 확인한 뒤 ① 대기 중인 교환을 취소·환급해 재고를 되돌리고 ② 개인 식별 정보 없는 회계 요약(지급·교환 수량)을 만들고 ③ `auth.admin.deleteUser`로 계정을 지웁니다. `public.users`의 모든 FK가 `on delete cascade`라 세션·원장·교환·쿠폰·초대·정산·기기가 함께 사라지고, 삭제가 끝난 뒤에야 요약이 `account_deletions`에 남습니다. 이메일·전화번호·user_id는 저장하지 않습니다.
+- **이용약관·개인정보처리방침**: `src/features/legal/legalText.ts`의 문구를 로그인 화면 하단과 설정에서 앱 안에서 바로 엽니다(`src/app/legal.tsx`). 적립 단가·주간 상한·교환 비율·정산 시각·탈퇴 시 파기까지 실제 구현과 같은 숫자로 적었고, `tests/legalText.test.mjs`가 그 숫자를 검사합니다. 문의 주소는 `EXPO_PUBLIC_SUPPORT_EMAIL`로 바꿉니다(비어 있으면 임시 주소).
+- **AdMob 실전 값 분리**: `app.config.ts`가 `ADMOB_APP_ID_IOS`·`ADMOB_APP_ID_ANDROID`로 `app.json`의 테스트 앱 ID를 덮어씁니다. **production 프로필에서 테스트 ID가 남아 있으면 빌드가 시작되지 않습니다.** 광고 단위는 런타임 값(`EXPO_PUBLIC_ADMOB_REWARDED_UNIT_ID_*`)이고, 테스트 단위로 떨어지면 개발 중에는 조용히, 배포 빌드에서는 한 번 경고합니다(`src/features/ads/adUnits.ts`).
+- **EAS**: `eas.json`에 `development`(dev client)와 `production`(store, `autoIncrement`) 프로필을 두었습니다. Android production은 `app-bundle`입니다.
+- **출시 체크리스트**: 마이그레이션·함수 배포 순서, secrets, AdMob SSV 콜백, Apple capability·Widget Extension·App Group, 실기기 검증 표, 스토어 제출 항목을 [docs/release-checklist.md](docs/release-checklist.md)에 정리했습니다.
 
 ## 확인
 
@@ -144,8 +167,12 @@ npx supabase db query --remote=uhisjleftevizjfudeip --file tests/sponsorChalleng
 pnpm test
 npx tsc --noEmit
 pnpm lint
+npx expo config --type public > /dev/null
 npx expo export --platform web
 npx expo export --platform ios
 ```
+
+SQL 테스트(로컬 PGlite 또는 원격 `supabase db query`)는 `tests/*.sql` 11개이고, Edge Function은
+`deno check supabase/functions/*/index.ts`로 전체를 확인합니다.
 
 기획 원문은 [spec.md](docs/spec.md)에 있습니다. 정책 수치와 적립 로직은 후속 마일스톤에서 서버 함수와 함께 구현합니다.

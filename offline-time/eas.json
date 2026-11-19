@@ -1,5 +1,12 @@
 {
   "build": {
+    "development": {
+      "environment": "development",
+      "pnpm": "12.21.0",
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {}
+    },
     "preview-simulator": {
       "environment": "preview",
       "pnpm": "12.21.0",
@@ -12,6 +19,16 @@
       "pnpm": "12.21.0",
       "distribution": "internal",
       "ios": {}
+    },
+    "production": {
+      "environment": "production",
+      "pnpm": "12.21.0",
+      "distribution": "store",
+      "autoIncrement": true,
+      "ios": {},
+      "android": {
+        "buildType": "app-bundle"
+      }
     }
   }
 }

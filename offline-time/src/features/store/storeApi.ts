@@ -14,6 +14,9 @@ export type Redemption = {
   points: number;
   status: 'requested' | 'issued' | 'failed';
   created_at: string;
+  issued_at: string | null;
+  fail_reason: string | null;
+  provider: string | null;
 };
 
 export const walletQueryKey = (userId: string | undefined) => ['wallet', userId] as const;
@@ -38,11 +41,14 @@ export async function listProducts(): Promise<Product[]> {
 
 export async function listRedemptions(userId: string): Promise<Redemption[]> {
   if (!supabase) throw new Error('서비스에 연결하지 못했습니다.');
-  const { data, error } = await supabase.from('redemptions')
-    .select('id,product_id,points,status,created_at').eq('user_id', userId)
+  const read = (columns: string) => supabase!.from('redemptions')
+    .select(columns).eq('user_id', userId)
     .order('created_at', { ascending: false }).limit(50);
+  // 0009 이전 서버에는 발송 열이 없다(42703). 그때는 예전 열로 다시 읽어 화면이 깨지지 않게 한다.
+  let { data, error } = await read('id,product_id,points,status,created_at,issued_at,fail_reason,provider');
+  if (error?.code === '42703') ({ data, error } = await read('id,product_id,points,status,created_at'));
   if (error) throw error;
-  return (data ?? []) as Redemption[];
+  return (data ?? []) as unknown as Redemption[];
 }
 
 export async function requestRedemption(productId: string, phone: string, idempotencyKey: string): Promise<Redemption> {

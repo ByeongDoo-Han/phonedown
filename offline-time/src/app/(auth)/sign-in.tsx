@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Redirect } from 'expo-router';
+import { Redirect, router } from 'expo-router';
 import { useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ActionButton } from '@/components/ActionButton';
 import { Card } from '@/components/Card';
@@ -113,6 +113,20 @@ export default function SignIn() {
     {message ? <Notice tone={message.includes('메일') ? 'accent' : 'danger'}>{message}</Notice> : null}
 
     <Text style={styles.footer}>기록은 서버 시각으로 정산되고, 포인트는 주 단위로 확정돼요.</Text>
+
+    <View style={styles.legalRow}>
+      <Pressable accessibilityRole="link" accessibilityLabel="이용약관"
+        onPress={() => router.push({ pathname: '/legal', params: { doc: 'terms' } })}
+        style={({ pressed }) => pressed && styles.pressed}>
+        <Text style={styles.legalLink}>이용약관</Text>
+      </Pressable>
+      <Text style={styles.legalDot}>·</Text>
+      <Pressable accessibilityRole="link" accessibilityLabel="개인정보처리방침"
+        onPress={() => router.push({ pathname: '/legal', params: { doc: 'privacy' } })}
+        style={({ pressed }) => pressed && styles.pressed}>
+        <Text style={styles.legalLink}>개인정보처리방침</Text>
+      </Pressable>
+    </View>
   </Screen>;
 }
 
@@ -141,4 +155,9 @@ const styles = StyleSheet.create({
   dividerText: { fontSize: 12, fontWeight: '600', color: tokens.color.subtle },
   social: { gap: tokens.space.sm },
   footer: { fontSize: 12, lineHeight: 18, color: tokens.color.subtle, textAlign: 'center', marginTop: tokens.space.xs },
+  legalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  legalLink: { fontSize: 12, fontWeight: '700', color: tokens.color.accentStrong,
+    textDecorationLine: 'underline' },
+  legalDot: { fontSize: 12, color: tokens.color.subtle },
+  pressed: { opacity: 0.7 },
 });
