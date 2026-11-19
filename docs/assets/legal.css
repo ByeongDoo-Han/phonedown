@@ -54,6 +54,10 @@
 
 html { -webkit-text-size-adjust: 100%; }
 
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+}
+
 body {
   margin: 0;
   background: linear-gradient(180deg, var(--bg-top) 0, var(--bg) 320px);
