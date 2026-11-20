@@ -69,7 +69,7 @@ test('공개 페이지는 앱 안 약관과 같은 문의 주소를 쓴다', () 
 
 test('이용약관 페이지가 앱과 같은 숫자·조항을 담는다', () => {
   const text = textOf('terms.html');
-  const appTerms = legalDocument('terms', 'help@offlinetime.app');
+  const appTerms = legalDocument('terms', 'help@example.test');
   for (const section of appTerms.sections) {
     assert.ok(text.includes(section.title), `약관 조항 누락: ${section.title}`);
   }
@@ -82,7 +82,7 @@ test('이용약관 페이지가 앱과 같은 숫자·조항을 담는다', () =
 
 test('개인정보처리방침 페이지가 앱과 같은 수집·파기 문구를 담는다', () => {
   const text = textOf('privacy.html');
-  const appPrivacy = legalDocument('privacy', 'help@offlinetime.app');
+  const appPrivacy = legalDocument('privacy', 'help@example.test');
   for (const section of appPrivacy.sections) {
     assert.ok(text.includes(section.title), `방침 조항 누락: ${section.title}`);
   }
@@ -96,7 +96,7 @@ test('개인정보처리방침 페이지가 앱과 같은 수집·파기 문구�
 test('계정 삭제 안내가 심사 요건(앱 내 절차·즉시 삭제·이메일 요청)을 담는다', () => {
   const text = textOf('account-deletion.html');
   for (const needle of ['설정', '회원 탈퇴', '탈퇴하고 모든 기록 삭제', '유예 기간 없이',
-    '발송 대기 중인 교환', '환급되지 않아요', 'help@offlinetime.app', '지체 없이',
+    '발송 대기 중인 교환', '환급되지 않아요', 'quden04@gmail.com', '지체 없이',
     '개인을 알아볼 수 없는 요약', '복구할 수 없']) {
     assert.ok(text.includes(needle), `삭제 안내 문구 누락: ${needle}`);
   }

@@ -156,7 +156,7 @@ npx supabase db query --remote=uhisjleftevizjfudeip --file tests/accountDeletion
 ## 출시 준비 (4단계)
 
 - **계정 탈퇴**: 설정 → 회원 탈퇴 → "탈퇴" 입력 → 삭제. `delete-account` Edge Function이 로그인 사용자를 확인한 뒤 ① 대기 중인 교환을 취소·환급해 재고를 되돌리고 ② 개인 식별 정보 없는 회계 요약(지급·교환 수량)을 만들고 ③ `auth.admin.deleteUser`로 계정을 지웁니다. `public.users`의 모든 FK가 `on delete cascade`라 세션·원장·교환·쿠폰·초대·정산·기기가 함께 사라지고, 삭제가 끝난 뒤에야 요약이 `account_deletions`에 남습니다. 이메일·전화번호·user_id는 저장하지 않습니다.
-- **이용약관·개인정보처리방침**: `src/features/legal/legalText.ts`의 문구를 로그인 화면 하단과 설정에서 앱 안에서 바로 엽니다(`src/app/legal.tsx`). 적립 단가·주간 상한·교환 비율·정산 시각·탈퇴 시 파기까지 실제 구현과 같은 숫자로 적었고, `tests/legalText.test.mjs`가 그 숫자를 검사합니다. 문의 주소는 `EXPO_PUBLIC_SUPPORT_EMAIL`로 바꿉니다(비어 있으면 임시 주소).
+- **이용약관·개인정보처리방침**: `src/features/legal/legalText.ts`의 문구를 로그인 화면 하단과 설정에서 앱 안에서 바로 엽니다(`src/app/legal.tsx`). 적립 단가·주간 상한·교환 비율·정산 시각·탈퇴 시 파기까지 실제 구현과 같은 숫자로 적었고, `tests/legalText.test.mjs`가 그 숫자를 검사합니다. 문의 주소는 기본값이 실제 수신 주소 `quden04@gmail.com`이고, 다른 주소로 받으려면 `EXPO_PUBLIC_SUPPORT_EMAIL`로 덮어씁니다.
 - **AdMob 실전 값 분리**: `app.config.ts`가 `ADMOB_APP_ID_IOS`·`ADMOB_APP_ID_ANDROID`로 `app.json`의 테스트 앱 ID를 덮어씁니다. **production 프로필에서 테스트 ID가 남아 있으면 빌드가 시작되지 않습니다.** 광고 단위는 런타임 값(`EXPO_PUBLIC_ADMOB_REWARDED_UNIT_ID_*`)이고, 테스트 단위로 떨어지면 개발 중에는 조용히, 배포 빌드에서는 한 번 경고합니다(`src/features/ads/adUnits.ts`).
 - **EAS**: `eas.json`에 `development`(dev client)와 `production`(store, `autoIncrement`) 프로필을 두었습니다. Android production은 `app-bundle`입니다.
 - **출시 체크리스트**: 마이그레이션·함수 배포 순서, secrets, AdMob SSV 콜백, Apple capability·Widget Extension·App Group, 실기기 검증 표, 스토어 제출 항목을 [docs/release-checklist.md](docs/release-checklist.md)에 정리했습니다.
@@ -185,8 +185,8 @@ gh api -X POST repos/ByeongDoo-Han/phonedown/pages \
 ```
 
 - `docs/.nojekyll`이 있어 Jekyll 처리를 건너뜁니다(HTML을 그대로 서빙).
-- 문의 주소는 앱과 같은 임시 기본값 `help@offlinetime.app`을 씁니다. `EXPO_PUBLIC_SUPPORT_EMAIL`을
-  실제 주소로 바꾸면 루트 [docs/](../docs/) HTML의 `mailto:`와 본문도 함께 바꿔야 합니다(스토어 제출 전).
+- 문의 주소는 앱과 공개 페이지가 같은 `quden04@gmail.com`을 씁니다(`legalText.ts` 기본값). 다른 주소로
+  바꾸려면 `EXPO_PUBLIC_SUPPORT_EMAIL`을 넣고 루트 [docs/](../docs/) HTML의 `mailto:`·본문도 함께 바꿉니다.
 - 정책 숫자·조항을 바꾸면 `legalText.ts`와 루트 `docs/` HTML을 같이 고치고 `pnpm test`로 확인합니다.
 
 ## 확인
