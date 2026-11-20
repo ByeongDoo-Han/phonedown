@@ -4,8 +4,9 @@
 // `src/features/points/rewardMath.ts`의 값이고, 탈퇴는 `delete-account` + `0009`의 동작이다.
 // 정책 숫자를 바꾸면 이 파일도 함께 고친다(`tests/legalText.test.mjs`가 핵심 숫자를 검사한다).
 //
-// 문의처는 배포 환경변수 `EXPO_PUBLIC_SUPPORT_EMAIL`로 바꾼다. 값이 없으면 아래 기본 주소를
-// 쓰며, 스토어 제출 전에 실제 수신 주소로 맞춰야 한다(docs/release-checklist.md).
+// 문의처의 기본값은 실제 수신 주소다. 다른 주소로 받고 싶으면 배포 환경변수
+// `EXPO_PUBLIC_SUPPORT_EMAIL`로 덮어쓴다. 주소를 바꿀 때는 저장소 루트 `docs/*.html`의 `mailto:`,
+// `docs/store-listing.md`의 문의 줄도 같은 값으로 맞춘다(`tests/legalPages.test.mjs`가 확인한다).
 
 export type LegalSection = { title: string; body: string[] };
 export type LegalDocument = {
@@ -21,18 +22,11 @@ export type LegalDocId = 'terms' | 'privacy';
 
 export const LEGAL_UPDATED_AT = '2026년 11월 19일';
 
-const DEFAULT_SUPPORT_EMAIL = 'help@offlinetime.app';
+const DEFAULT_SUPPORT_EMAIL = 'quden04@gmail.com';
 
 export function supportEmail(configured: string | undefined = process.env.EXPO_PUBLIC_SUPPORT_EMAIL): string {
   const trimmed = configured?.trim();
   return trimmed && trimmed.includes('@') ? trimmed : DEFAULT_SUPPORT_EMAIL;
-}
-
-const isDefaultEmail = (value: string) => value === DEFAULT_SUPPORT_EMAIL;
-
-// 배포 전에 문의 주소를 실제 주소로 바꿨는지 확인할 때 쓴다(릴리스 점검용).
-export function usesPlaceholderSupportEmail(configured: string | undefined = process.env.EXPO_PUBLIC_SUPPORT_EMAIL): boolean {
-  return isDefaultEmail(supportEmail(configured));
 }
 
 export function legalDocument(id: LegalDocId, email: string = supportEmail()): LegalDocument {

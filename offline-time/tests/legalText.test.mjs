@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { LEGAL_UPDATED_AT, legalDocument, supportEmail, usesPlaceholderSupportEmail }
+import { LEGAL_UPDATED_AT, legalDocument, supportEmail }
   from '../src/features/legal/legalText.ts';
 
 const terms = legalDocument('terms', 'help@example.test');
@@ -51,10 +51,9 @@ test('both documents point at the support address they were given', () => {
   assert.match(privacy.sections.at(-1).body[0], /help@example\.test/);
 });
 
-test('the support address comes from the environment, with a placeholder as the fallback', () => {
+test('the support address comes from the environment, with the real inbox as the fallback', () => {
   assert.equal(supportEmail(' ops@offlinetime.app '), 'ops@offlinetime.app');
-  assert.equal(supportEmail('not-an-email'), 'help@offlinetime.app');
-  assert.equal(supportEmail(''), 'help@offlinetime.app');
-  assert.equal(usesPlaceholderSupportEmail(''), true);
-  assert.equal(usesPlaceholderSupportEmail('ops@offlinetime.app'), false);
+  assert.equal(supportEmail('not-an-email'), 'quden04@gmail.com');
+  assert.equal(supportEmail(''), 'quden04@gmail.com');
+  assert.equal(supportEmail(undefined), 'quden04@gmail.com');
 });

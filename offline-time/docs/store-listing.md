@@ -25,12 +25,14 @@ title: "오프라인 타임 — 스토어 등록 문구 · 심사 노트 (v1.0.0
 | Expo 프로젝트 | `@mybeats/offline-time` | `app.json` → `owner` |
 | 원격 Supabase | `uhisjleftevizjfudeip` (PostgreSQL 17) | `README.md` |
 | 언어 | 한국어 단일 | 앱 화면 전체 |
-| 문의 메일 | `help@offlinetime.app` — **임시 기본값** `[입력 필요]` | `src/features/legal/legalText.ts` |
+| 문의 메일 | `quden04@gmail.com` | `src/features/legal/legalText.ts` 기본값(환경변수로 덮어쓰기 가능) |
 | 공개 페이지 | `https://byeongdoo-han.github.io/phonedown/` 외 3개 — **4개 모두 200 확인**(2026-11-19) | GitHub Pages `built` (source `main` / `docs`, https 강제) |
 | 브랜드 색 | 배경 `#F7F8FA`, 강조 `#0F766E`, 밤 `#0F172A`~`#172033` | `src/theme/tokens.ts` |
 
-문의 메일을 실제 주소로 바꾸면 `EXPO_PUBLIC_SUPPORT_EMAIL`과 저장소 루트 `docs/*.html`의 `mailto:`를
-같이 바꾸고 `pnpm test`로 확인합니다(`tests/legalPages.test.mjs`가 앱과 페이지의 주소가 같은지 본다).
+문의 메일은 앱·공개 페이지·스토어 등록정보가 모두 `quden04@gmail.com` 하나를 씁니다. 주소를 바꿀 때는
+`src/features/legal/legalText.ts`의 기본값(또는 `EXPO_PUBLIC_SUPPORT_EMAIL`), 저장소 루트 `docs/*.html`의
+`mailto:`·본문, 이 문서의 문의 줄을 함께 고치고 `pnpm test`로 확인합니다(`tests/legalPages.test.mjs`가
+앱과 페이지의 주소가 같은지 본다).
 
 ---
 
@@ -104,7 +106,7 @@ title: "오프라인 타임 — 스토어 등록 문구 · 심사 노트 (v1.0.0
 ■ 내 정보는 내가 지워요
 설정에서 회원 탈퇴를 하면 기록·포인트·교환 내역이 즉시 지워지고 되돌릴 수 없어요. 위치·연락처·사진·카메라·건강 정보에는 접근하지 않아요. 교환을 신청할 때 적는 휴대전화 번호는 상품 발송에만 씁니다. 알림은 선택이고, 거부해도 기록과 적립은 그대로 동작해요.
 
-문의: help@offlinetime.app
+문의: quden04@gmail.com
 개인정보처리방침: https://byeongdoo-han.github.io/phonedown/privacy.html
 이용약관: https://byeongdoo-han.github.io/phonedown/terms.html
 ```
@@ -339,7 +341,7 @@ Play는 30자까지 이름에 설명을 붙일 수 있지만, iOS와 같은 이�
 ■ 내 정보는 내가 지워요
 설정에서 회원 탈퇴를 하면 기록·포인트·교환 내역이 즉시 지워지고 되돌릴 수 없어요. 위치·연락처·사진·카메라·건강 정보에는 접근하지 않아요. 교환을 신청할 때 적는 휴대전화 번호는 상품 발송에만 씁니다.
 
-문의: help@offlinetime.app
+문의: quden04@gmail.com
 개인정보처리방침: https://byeongdoo-han.github.io/phonedown/privacy.html
 이용약관: https://byeongdoo-han.github.io/phonedown/terms.html
 ```
@@ -352,7 +354,7 @@ Play는 30자까지 이름에 설명을 붙일 수 있지만, iOS와 같은 이�
 | 기본 언어 | 한국어 |
 | 카테고리 | 라이프스타일 (Play는 1개만 고릅니다) |
 | 태그 | 습관, 생산성 (Play 콘솔에 보이는 목록 중에서 고른다 — 목록은 언어·지역에 따라 다르다) |
-| 연락처 이메일 | `help@offlinetime.app` `[입력 필요]` |
+| 연락처 이메일 | `quden04@gmail.com` |
 | 웹사이트 | `https://byeongdoo-han.github.io/phonedown/` |
 | 개인정보처리방침 | `https://byeongdoo-han.github.io/phonedown/privacy.html` |
 | 계정 삭제 URL | `https://byeongdoo-han.github.io/phonedown/account-deletion.html` |
@@ -507,23 +509,22 @@ npx supabase db query --remote=uhisjleftevizjfudeip \
 
 | # | 항목 | 어디에 | 없으면 |
 | --- | --- | --- | --- |
-| 1 | 실제 수신 문의 메일 주소 | `EXPO_PUBLIC_SUPPORT_EMAIL`, 루트 `docs/*.html`의 `mailto:`, 1.4·2.3 설명 끝 문의 줄 | 스토어·방침의 문의처가 임시 주소(`help@offlinetime.app`)로 나감 |
-| 2 | 심사용 계정 이메일·비밀번호 | 1.11 심사 노트 | 심사자가 로그인하지 못해 반려(2.1) |
-| 3 | 심사용 계정의 확정 포인트·교환 내역 | DB(심사 계정 uuid) | 교환 흐름을 확인할 수 없음 |
-| 4 | 심사 기간 활성 상품 1종 | 6장 SQL | 교환소가 "준비 중"으로 보임 |
-| 5 | 앱 이름 중복 확인 | App Store Connect 등록 화면 | 이름을 못 쓰면 1.1 대안으로 교체 |
-| 6 | AdMob 실제 앱 ID·리워드 광고 단위 ID | EAS `ADMOB_APP_ID_IOS`/`_ANDROID`, `EXPO_PUBLIC_ADMOB_REWARDED_UNIT_ID_*` | production 빌드가 시작되지 않음(테스트 ID 차단) |
-| 7 | AdMob SSV 콜백 URL 등록 | AdMob 콘솔 | 광고를 봐도 포인트가 지급되지 않음 |
-| 8 | 개인정보 보호책임자 성명·연락처, 사업자 정보 | 루트 `docs/privacy.html`, 앱 약관 | 국내 개인정보보호법 제30조 고지 요건 미비(스토어 심사와 별개) |
-| 9 | Play 아이콘 512×512·그래픽 이미지 1024×500 | Play 스토어 등록정보 | 등록정보 저장 불가 |
-| 10 | 저작권 표기(예: `© 2026 오프라인 타임`) | App Store Connect 앱 정보 | 칸이 비어 저장되지 않음 |
+| 1 | 심사용 계정 이메일·비밀번호 | 1.11 심사 노트 | 심사자가 로그인하지 못해 반려(2.1) |
+| 2 | 심사용 계정의 확정 포인트·교환 내역 | DB(심사 계정 uuid) | 교환 흐름을 확인할 수 없음 |
+| 3 | 심사 기간 활성 상품 1종 | 6장 SQL | 교환소가 "준비 중"으로 보임 |
+| 4 | 앱 이름 중복 확인 | App Store Connect 등록 화면 | 이름을 못 쓰면 1.1 대안으로 교체 |
+| 5 | AdMob 실제 앱 ID·리워드 광고 단위 ID | EAS `ADMOB_APP_ID_IOS`/`_ANDROID`, `EXPO_PUBLIC_ADMOB_REWARDED_UNIT_ID_*` | production 빌드가 시작되지 않음(테스트 ID 차단) |
+| 6 | AdMob SSV 콜백 URL 등록 | AdMob 콘솔 | 광고를 봐도 포인트가 지급되지 않음 |
+| 7 | 개인정보 보호책임자 성명·연락처, 사업자 정보 | 루트 `docs/privacy.html`, 앱 약관 | 국내 개인정보보호법 제30조 고지 요건 미비(스토어 심사와 별개) |
+| 8 | Play 아이콘 512×512·그래픽 이미지 1024×500 | Play 스토어 등록정보 | 등록정보 저장 불가 |
+| 9 | 저작권 표기(예: `© 2026 오프라인 타임`) | App Store Connect 앱 정보 | 칸이 비어 저장되지 않음 |
 
 ### 7.2 순서
 
 1. GitHub Pages 활성화 → 네 URL 접속 확인(`privacy.html`, `terms.html`, `account-deletion.html`, `index.html`)
-2. 7.1의 1·6·7·4 채우기(메일 주소 → 광고 ID → SSV → 상품)
+2. 7.1의 1·5·6·3 채우기(심사 계정 → 광고 ID → SSV → 상품)
 3. `npx eas-cli@latest build --platform all --profile production`
-4. 심사용 계정 만들고 확정 포인트·교환 내역 넣기(7.1의 2·3)
+4. 심사용 계정 만들고 확정 포인트·교환 내역 넣기(7.1의 1·2)
 5. 스크린샷 6장 촬영(1.10) → App Store Connect / Play 등록정보 입력
 6. App Privacy(3장)·Data safety(2.6) 입력 → 제출
 
@@ -540,4 +541,4 @@ npx supabase db query --remote=uhisjleftevizjfudeip \
 | 로그인 벽 | 앱의 모든 화면이 로그인 후에 열림 | 앱 액세스 권한 "제한됨" + 심사용 계정 |
 | 계정 삭제 | Apple은 앱 안 삭제 경로를 요구 | 설정 → 회원 탈퇴(“탈퇴” 입력) + 웹 요청 페이지 |
 | 14세 미만 | 약관·방침에만 있고 가입 화면에 나이 확인이 없음 | 심사에서 지적되면 가입 화면에 연령 확인 1단계 추가(현재는 약관 동의 문구로 갈음) |
-| 문의처 | 임시 주소면 심사·사용자 문의가 닿지 않음 | 7.1의 1번을 제출 전 반드시 |
+| 문의처 | 임시 주소가 남으면 심사·사용자 문의가 닿지 않음 | 앱 기본값·공개 페이지 `mailto:`·스토어 연락처를 `quden04@gmail.com`으로 맞췄다(`pnpm test`가 앱과 페이지의 일치를 검사) |

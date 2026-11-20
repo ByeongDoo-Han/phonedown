@@ -118,9 +118,10 @@ npx supabase functions deploy \
       (기록·포인트·교환·쿠폰이 사라지고, `account_deletions`에 개인 식별 없는 요약 1행이 남는다)
 - [ ] **이용약관·개인정보처리방침**: 로그인 화면 하단 링크와 설정에서 열림. 문구가 실제 동작과 같은지
       (적립 2P/시간, 주 100P+80P, 1,400P 최소, 월요일 정산, 탈퇴 시 즉시 파기)
-- [ ] 문의 주소: EAS 환경변수 `EXPO_PUBLIC_SUPPORT_EMAIL`에 실제 수신 주소를 넣는다.
-      비어 있으면 `help@offlinetime.app`(임시)로 표시된다. **제출 전 반드시 실제 주소로.**
-      바꿨다면 공개 페이지(저장소 루트 `docs/*.html`)의 `mailto:`도 같은 주소로 바꾸고 `pnpm test`로 확인한다.
+- [ ] 문의 주소: 기본값이 실제 수신 주소 `quden04@gmail.com`이므로 따로 넣지 않아도 된다. 다른 주소로
+      받으려면 EAS 환경변수 `EXPO_PUBLIC_SUPPORT_EMAIL`로 덮어쓴다(앱 약관·방침·설정 화면에 그 주소가 나온다).
+      주소를 바꿨다면 공개 페이지(저장소 루트 `docs/*.html`)의 `mailto:`·본문과 `docs/store-listing.md`의
+      문의 줄도 같은 주소로 바꾸고 `pnpm test`로 확인한다.
 - [ ] **GitHub Pages 열기**: 저장소 Settings → Pages → Source `Deploy from a branch`,
       Branch `main`, Folder `/docs` (한 번만). 1~2분 뒤 https://byeongdoo-han.github.io/phonedown/ 가 열린다.
       CLI: `gh api -X POST repos/ByeongDoo-Han/phonedown/pages -f 'source[branch]=main' -f 'source[path]=/docs'`
